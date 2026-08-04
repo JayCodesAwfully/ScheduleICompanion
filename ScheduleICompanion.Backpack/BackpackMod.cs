@@ -23,7 +23,7 @@ namespace ScheduleICompanion.Backpack;
 public sealed class BackpackMod : MelonMod
 {
     private static BackpackMod? ActiveInstance;
-    private const string ProtocolVersion = "1";
+    private const string ProtocolVersion = "2";
     private BackpackStore? _store;
     private MelonPreferences_Entry<string>? _openKeyEntry;
     private KeyCode _openKey = KeyCode.B;
@@ -392,7 +392,7 @@ public sealed class BackpackMod : MelonMod
         {
             _waitingForHost = true;
             _status = "Waiting for the host snapshot";
-            BackpackProtocol.Send(new BackpackMessage { Type = "hello", Protocol = ProtocolVersion, RequestId = Guid.NewGuid() });
+            SendHello();
         }
 
         EnsureNativeStorage();
@@ -463,6 +463,7 @@ public sealed class BackpackMod : MelonMod
             _state.Slots[i] = i < slots.Count && slots[i].ItemInstance is { } item ? SerializeItem(item) : "";
         _state.Revision++;
         StageState(_state);
+        SyncStateWithHost();
         _waitingForHost = false;
         _status = "Closing Backpack and saving game...";
         RestoreSharedStorageMenu();
@@ -526,6 +527,7 @@ public sealed class BackpackMod : MelonMod
         if (!changed) return;
         _state.Revision++;
         StageState(_state);
+        SyncStateWithHost();
     }
 
     private void HandleNativeDrop(ItemUIManager manager)
@@ -664,7 +666,7 @@ public sealed class BackpackMod : MelonMod
         {
             _waitingForHost = true;
             _status = "Waiting for the host snapshot";
-            if (!BackpackProtocol.Send(new BackpackMessage { Type = "hello", Protocol = ProtocolVersion, RequestId = Guid.NewGuid() }))
+            if (!SendHello())
             {
                 _waitingForHost = false;
                 _status = "Not verified: unable to contact the host";
@@ -734,7 +736,7 @@ public sealed class BackpackMod : MelonMod
         var local = LocalSteamId();
         if (message.Recipient != 0 && message.Recipient != local) return;
 
-        if (IsHost() && message.Type is "hello" or "deposit" or "withdraw")
+        if (IsHost() && message.Type is "hello" or "sync" or "deposit" or "withdraw")
         {
             ProcessHostRequest(sender, message);
             return;
@@ -771,8 +773,10 @@ public sealed class BackpackMod : MelonMod
         }
 
         var state = LoadWorkingState(sender, CareerId());
+        if (request.Type is "hello" or "sync")
+            state = ReconcileClientRecovery(sender, state, request.State);
         RecoverInterrupted(state, player);
-        if (request.Type == "hello")
+        if (request.Type is "hello" or "sync")
         {
             SendResult(sender, request.RequestId, true, "Synchronised", state);
             return;
@@ -924,6 +928,48 @@ public sealed class BackpackMod : MelonMod
         var steam = LocalSteamId();
         _state = LoadWorkingState(steam, CareerId());
         _status = "Local recovery copy loaded";
+    }
+
+    private bool SendHello()
+    {
+        if (_state is null) return false;
+        return BackpackProtocol.Send(new BackpackMessage
+        {
+            Type = "hello",
+            Protocol = ProtocolVersion,
+            RequestId = Guid.NewGuid(),
+            ExpectedRevision = _state.Revision,
+            State = _state.Clone()
+        });
+    }
+
+    private void SyncStateWithHost()
+    {
+        if (_state is null || !_sessionVerified || !IsMultiplayerClient()) return;
+        BackpackProtocol.Send(new BackpackMessage
+        {
+            Type = "sync",
+            Protocol = ProtocolVersion,
+            RequestId = Guid.NewGuid(),
+            ExpectedRevision = _state.Revision,
+            State = _state.Clone()
+        });
+    }
+
+    private BackpackState ReconcileClientRecovery(ulong sender, BackpackState host, BackpackState? client)
+    {
+        if (client is null || client.Schema != host.Schema || client.Slots is null || client.Slots.Length != 12)
+            return host;
+        if (client.OwnerSteamId != sender || !string.Equals(client.CareerId, host.CareerId, StringComparison.OrdinalIgnoreCase))
+            return host;
+        if (client.Revision <= host.Revision) return host;
+
+        var recovered = client.Clone();
+        recovered.OwnerSteamId = sender;
+        recovered.CareerId = host.CareerId;
+        StageState(recovered);
+        LoggerInstance.Msg($"Recovered newer Backpack revision {recovered.Revision} from Steam user {sender}; host was revision {host.Revision}.");
+        return recovered;
     }
 
     private static string StateKey(ulong owner, string career) => $"{owner}:{career}";

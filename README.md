@@ -18,7 +18,7 @@ built-in console command system.
 
 ## Shareable install
 
-Extract `dist\ScheduleICompanion-v1.7.2.zip`, keep its `Payload` folder beside
+Extract `dist\ScheduleICompanion-v1.7.3.zip`, keep its `Payload` folder beside
 `ScheduleICompanion-Setup.exe`, and run the setup application. It detects Steam libraries,
 can install the official pinned MelonLoader v0.7.3 x64 build, verifies that download before
 extracting it, installs the self-contained Companion, creates backups, and supports repair or
