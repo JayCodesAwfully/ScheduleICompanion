@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ScheduleICompanion.Mod</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="GameProbe.cs" />
+    <Compile Remove="NotificationHookInstaller.cs" />
+    <Compile Remove="OrderHookInstaller.cs" />
+    <Compile Include="..\Shared\BridgeMessage.cs" Link="Shared\BridgeMessage.cs" />
+
+    <Reference Include="MelonLoader">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\net6\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\net6\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppFishNet.Runtime" Condition="Exists('$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2CppFishNet.Runtime.dll')">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2CppFishNet.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib" Condition="Exists('$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll')">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib" Condition="!Exists('$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll') And Exists('$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\mscorlib.dll')">
+      <HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\mscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

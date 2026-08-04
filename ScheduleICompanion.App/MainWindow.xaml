@@ -1,0 +1,645 @@
+<Window x:Class="ScheduleICompanion.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Schedule I Companion" Width="1250" Height="820"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="Manual"
+        Background="#0D120F" Foreground="#E8F0EA" FontFamily="Segoe UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#171E19"/>
+        <SolidColorBrush x:Key="RaisedBrush" Color="#202923"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#344139"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#62D58B"/>
+        <SolidColorBrush x:Key="AccentDarkBrush" Color="#244D33"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#95A49A"/>
+
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#F2FFF6"/>
+            <Setter Property="Background" Value="#29352E"/>
+            <Setter Property="BorderBrush" Value="#46574D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#355141"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1F3929"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="#E8F0EA"/>
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource AccentDarkBrush}"/>
+            <Setter Property="Padding" Value="7,5"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#DCE7DF"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="SwitchCheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Cursor="Hand">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="38"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="SwitchTrack" Width="34" Height="18" CornerRadius="9"
+                                    Background="#39433D" BorderBrush="#617067" BorderThickness="1">
+                                <Ellipse x:Name="SwitchThumb" Width="14" Height="14" Margin="1"
+                                         HorizontalAlignment="Left" Fill="#D7DFDA"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="{StaticResource AccentDarkBrush}"/>
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="SwitchThumb" Property="Fill" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#E8F0EA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="GroupBox">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Padding" Value="18,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabChrome" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1,1,1,0"
+                                Padding="{TemplateBinding Padding}" Margin="0,0,2,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="{StaticResource RaisedBrush}"/>
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#29352E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                    <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="Foreground" Value="#E1EAE4"/>
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="RowBackground" Value="#151C17"/>
+            <Setter Property="AlternatingRowBackground" Value="#1A231D"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#263129"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#263129"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Background" Value="#202923"/>
+            <Setter Property="BorderBrush" Value="#344139"/>
+            <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="7,5"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentDarkBrush}"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="OperationRowTemplate">
+            <Grid Margin="2,3">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <Border Grid.Column="1" Background="#24372B" BorderBrush="#44614F" BorderThickness="1" CornerRadius="8"
+                        Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding State}" Foreground="{StaticResource AccentBrush}" FontSize="10" FontWeight="SemiBold"/>
+                </Border>
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}"
+                           FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"/>
+            </Grid>
+        </DataTemplate>
+        <Style TargetType="ListBox">
+            <Setter Property="Foreground" Value="#E1EAE4"/>
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentDarkBrush}"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="SCHEDULE I" Foreground="{StaticResource AccentBrush}"
+                               FontWeight="Black" FontSize="23"/>
+                    <TextBlock Text="  COMPANION" Foreground="#F2F6F3" FontWeight="Light" FontSize="23"/>
+                </StackPanel>
+                <TextBlock Text="H Y L A N D   P O I N T   O P E R A T I O N S" Foreground="{StaticResource MutedBrush}"
+                           FontSize="9" FontWeight="SemiBold" Margin="1,2,0,0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Ellipse x:Name="ConnectionDot" Width="12" Height="12" Margin="0,0,6,0" Fill="DarkRed"/>
+                <TextBlock x:Name="ConnectionText" Text="WAITING FOR GAME" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold"/>
+            </StackPanel>
+        </DockPanel>
+
+        <TabControl Grid.Row="1" x:Name="Tabs">
+            <TabItem Header="Dashboard">
+                <Grid Margin="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Margin="0,0,8,0" ClipToBounds="True">
+                        <DockPanel Background="#111111">
+                            <Border DockPanel.Dock="Top" Background="#EE202020" Padding="6" Panel.ZIndex="20">
+                                <DockPanel>
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                        <TextBlock x:Name="PlayerCountText" Text="Players: 0" Foreground="White"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="  •  " Foreground="#718078" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="NpcCountText" Text="NPCs: 0" Foreground="White"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="PositionText" Text="Position: unavailable" Foreground="#B7C3BB"
+                                                   VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="−" Width="28" Click="MapZoomOut_Click" ToolTip="Zoom out"/>
+                                        <TextBlock x:Name="MapZoomText" Text="Fit" Foreground="White" Width="52"
+                                                   TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Content="+" Width="28" Click="MapZoomIn_Click" ToolTip="Zoom in"/>
+                                        <Button Content="Fit" Margin="6,0,0,0" Click="MapFit_Click" ToolTip="Fit the complete map"/>
+                                        <Button Content="100%" Margin="4,0,0,0" Click="MapActualSize_Click" ToolTip="Actual image size"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+
+                            <Grid>
+                                <ScrollViewer x:Name="MapScrollViewer" Background="#111111"
+                                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                              PreviewMouseWheel="MapScrollViewer_PreviewMouseWheel"
+                                              PreviewMouseLeftButtonDown="MapScrollViewer_PreviewMouseLeftButtonDown"
+                                              PreviewMouseLeftButtonUp="MapScrollViewer_PreviewMouseLeftButtonUp"
+                                              PreviewMouseMove="MapScrollViewer_PreviewMouseMove"
+                                              SizeChanged="MapScrollViewer_SizeChanged">
+                                    <Grid x:Name="MapSurface" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                          RenderTransformOrigin="0,0">
+                                        <Grid.LayoutTransform>
+                                            <ScaleTransform x:Name="MapScaleTransform" ScaleX="1" ScaleY="1"/>
+                                        </Grid.LayoutTransform>
+                                        <Image x:Name="MapImage" Stretch="Fill"/>
+                                        <Rectangle x:Name="UndergroundDimLayer" Fill="#A0000000" Visibility="Collapsed"/>
+                                        <Image x:Name="SewerOverlayImage" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"/>
+                                        <Canvas x:Name="MapOverlay" IsHitTestVisible="True">
+                                            <Polygon x:Name="PlayerMarker" Points="0,-10 7,7 0,4 -7,7"
+                                                     Fill="#168CFF" Stroke="White" StrokeThickness="2"
+                                                     Panel.ZIndex="1000" IsHitTestVisible="False"
+                                                     Visibility="Collapsed">
+                                                <Polygon.Effect>
+                                                    <DropShadowEffect Color="Black" BlurRadius="7" ShadowDepth="1" Opacity="1"/>
+                                                </Polygon.Effect>
+                                            </Polygon>
+                                        </Canvas>
+                                    </Grid>
+                                </ScrollViewer>
+
+                                <Button x:Name="LegendButton" Content="i" Click="Legend_Click"
+                                        Width="30" Height="30" Padding="0" FontWeight="Bold" FontStyle="Italic"
+                                        HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
+                                        ToolTip="Show map legend"/>
+                                <Popup x:Name="LegendPopup" PlacementTarget="{Binding ElementName=LegendButton}"
+                                       Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                                    <Border Background="#F018281D" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                            CornerRadius="5" Padding="14,11" Width="330">
+                                        <StackPanel>
+                                            <TextBlock Text="LEGEND" Foreground="{StaticResource AccentBrush}"
+                                                       FontSize="18" FontWeight="Black" Margin="0,0,0,9"/>
+                                            <Border Height="1" Background="#526B5A" Margin="0,0,0,8"/>
+                                            <DockPanel Margin="0,3"><TextBlock Text="⌂" Foreground="#23BE5C" FontWeight="Bold" Width="24"/><TextBlock Text="Properties — green owned / red available" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="£" Foreground="#16A5B9" FontWeight="Bold" Width="24"/><TextBlock Text="Businesses — cyan owned / orange available" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="!" Foreground="#E09B14" FontWeight="Bold" Width="24"/><TextBlock Text="Contracts" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="V" Foreground="#149BCD" FontWeight="Bold" Width="24"/><TextBlock Text="Owned vehicle" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="↓" Foreground="#C2378F" FontWeight="Bold" Width="24"/><TextBlock Text="Dead drops" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="$" Foreground="#8946CD" FontWeight="Bold" Width="24"/><TextBlock Text="Recruited dealers" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="★" Foreground="#FFBE20" FontWeight="Bold" Width="24"/><TextBlock Text="Tracked objective" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="●" Foreground="#E2992D" FontWeight="Bold" Width="24"/><TextBlock Text="Potential customer portrait" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="▲" Foreground="#168CFF" FontWeight="Bold" Width="24"/><TextBlock Text="Players" Foreground="#E8F0EA"/></DockPanel>
+                                            <DockPanel Margin="0,3"><TextBlock Text="S" Foreground="#52C7B8" FontWeight="Bold" Width="24"/><TextBlock Text="Suppliers" Foreground="#E8F0EA"/></DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                                <TextBlock Text="Mouse wheel: zoom  •  Drag: pan" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                           Margin="8" Background="#BB000000" Foreground="White" Padding="5" IsHitTestVisible="False"/>
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+
+                    <Grid Grid.Column="1" Margin="2,0,2,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="1.25*"/>
+                            <RowDefinition Height="1.25*"/>
+                        </Grid.RowDefinitions>
+                            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" x:Name="OptionsButton" Content="OPTIONS  ▾" Click="DashboardOptions_Click"
+                                        HorizontalAlignment="Right" Padding="14,6"/>
+                                <Popup x:Name="DashboardOptionsPopup" PlacementTarget="{Binding ElementName=OptionsButton}"
+                                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                    <Border Background="#F21A221C" BorderBrush="{StaticResource AccentBrush}"
+                                            BorderThickness="1" CornerRadius="4" Padding="14" Width="310">
+                                        <ScrollViewer MaxHeight="500" VerticalScrollBarVisibility="Auto">
+                                            <StackPanel>
+                                                <TextBlock Text="MAP POINTS OF INTEREST" Foreground="{StaticResource AccentBrush}"
+                                                           FontWeight="Bold" FontSize="12" Margin="0,0,0,8"/>
+                                                <CheckBox x:Name="ShowPropertyPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Properties" Click="DashboardMapOptions_Click"/>
+                                                <CheckBox x:Name="ShowBusinessPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Laundering businesses" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowContractPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Contracts" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowOwnedVehiclePoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Owned vehicles" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowDeadDropPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Dead drops" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowDealerPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Recruited dealers" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowObjectivePoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Tracked objective star" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowPotentialCustomerPoisCheck" Style="{StaticResource SwitchCheckBox}" Content="Potential customers (face icons)" Click="DashboardMapOptions_Click" Margin="0,7,0,12"/>
+
+                                                <TextBlock Text="MULTIPLAYER" Foreground="{StaticResource AccentBrush}"
+                                                           FontWeight="Bold" FontSize="12" Margin="0,0,0,8"/>
+                                                <CheckBox x:Name="ShowOtherPlayersCheck" Style="{StaticResource SwitchCheckBox}" Content="Show other players" Click="DashboardMapOptions_Click"/>
+                                                <CheckBox x:Name="ShowPlayerNamesCheck" Style="{StaticResource SwitchCheckBox}" Content="Always show other player names" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                                <CheckBox x:Name="ShowFacingDirectionCheck" Style="{StaticResource SwitchCheckBox}" Content="Show facing direction" Click="DashboardMapOptions_Click" Margin="0,7,0,12"/>
+
+                                                <TextBlock Text="OTHER MAP LAYERS" Foreground="{StaticResource AccentBrush}"
+                                                           FontWeight="Bold" FontSize="12" Margin="0,0,0,8"/>
+                                                <CheckBox x:Name="ShowNpcMarkersCheck" Style="{StaticResource SwitchCheckBox}" Content="Show live NPC markers" Click="DashboardMapOptions_Click"/>
+                                                <CheckBox x:Name="ShowNpcNamesCheck" Style="{StaticResource SwitchCheckBox}" Content="Show NPC names" Click="DashboardMapOptions_Click" Margin="0,7,0,0"/>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="DashboardInfoViewButton" Content="DASHBOARD" Click="DashboardInfoView_Click"
+                                            Background="{StaticResource AccentDarkBrush}" BorderBrush="{StaticResource AccentBrush}" Padding="12,6"/>
+                                    <Button x:Name="OperationsInfoViewButton" Content="OPERATIONS" Click="OperationsInfoView_Click"
+                                            Margin="5,0,0,0" Padding="12,6"/>
+                                </StackPanel>
+                            </DockPanel>
+
+                            <GroupBox Grid.Row="2" x:Name="OrdersPanel" Header="Active Orders"
+                                      Margin="0,0,0,8">
+                                <DataGrid x:Name="OrderGrid" IsReadOnly="True" AutoGenerateColumns="False"
+                                          CanUserAddRows="False" VerticalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Product" Binding="{Binding Product}" Width="*"/>
+                                        <DataGridTextColumn Header="Needed" Binding="{Binding Needed}" Width="65"/>
+                                        <DataGridTextColumn Header="Owned" Binding="{Binding Owned}" Width="65"/>
+                                        <DataGridTextColumn Header="Short" Binding="{Binding Short}" Width="58"/>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="82"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+
+                            <Border Grid.Row="1" x:Name="ClockPanel" Background="#202923" BorderBrush="{StaticResource AccentBrush}"
+                                    BorderThickness="0,0,0,2" CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
+                                <DockPanel>
+                                    <TextBlock x:Name="ClockDayText" Text="WAITING FOR GAME" Foreground="{StaticResource MutedBrush}"
+                                               FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ClockTimeText" Text="--:--" Foreground="{StaticResource AccentBrush}"
+                                               FontSize="24" FontWeight="Light" HorizontalAlignment="Right"/>
+                                </DockPanel>
+                            </Border>
+
+                            <GroupBox Grid.Row="3" x:Name="QuestPanel" Header="Current quests" Margin="0,0,0,8">
+                                <ListBox x:Name="QuestList" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="2">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Marker}" Foreground="{StaticResource AccentBrush}"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Entries}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </GroupBox>
+
+                            <GroupBox Grid.Row="4" x:Name="MessagePanel" Header="Active Messages" Margin="0,0,0,0">
+                                <ListBox x:Name="MessageList" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="2">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Marker}" Foreground="#D96AA7"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Contact}" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding Text}" Foreground="{StaticResource MutedBrush}" FontSize="11"
+                                                               TextWrapping="Wrap" MaxHeight="42"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </GroupBox>
+
+                            <Grid Grid.Row="1" Grid.RowSpan="4" x:Name="OperationsPane" Visibility="Collapsed"
+                                  Panel.ZIndex="5" Background="#111713">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <Border Background="#202923" BorderBrush="{StaticResource AccentBrush}" BorderThickness="0,0,0,2"
+                                                CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                <StackPanel><TextBlock Text="CASH" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="CashBalanceText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
+                                                <StackPanel Grid.Column="1"><TextBlock Text="ONLINE" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="OnlineBalanceText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
+                                                <StackPanel Grid.Row="1" Margin="0,7,0,0"><TextBlock Text="NET WORTH" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="NetWorthText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,7,0,0"><TextBlock Text="RISK / REGION" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="RiskText" Text="Waiting for game" FontSize="12" TextWrapping="Wrap"/></StackPanel>
+                                            </Grid>
+                                        </Border>
+                                        <GroupBox Header="Order Readiness" Margin="0,0,0,8">
+                                            <ListBox x:Name="OperationOrderList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="180" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                                        </GroupBox>
+                                        <GroupBox Header="Production" Margin="0,0,0,8"><ListBox x:Name="ProductionList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="140" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/></GroupBox>
+                                        <GroupBox Header="Dealers" Margin="0,0,0,8"><ListBox x:Name="DealerList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="140" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/></GroupBox>
+                                        <GroupBox Header="Deliveries" Margin="0,0,0,8"><ListBox x:Name="DeliveryList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="150" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/></GroupBox>
+                                        <GroupBox Header="Employees" Margin="0,0,0,8"><ListBox x:Name="EmployeeList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="150" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/></GroupBox>
+                                        <GroupBox Header="Laundering"><ListBox x:Name="LaunderingList" ItemTemplate="{StaticResource OperationRowTemplate}" MaxHeight="150" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"/></GroupBox>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="DiagnosticsTab" Header="Diagnostics" Visibility="Collapsed">
+                <DockPanel Margin="8">
+                    <Button DockPanel.Dock="Top" Content="Copy diagnostics" Click="CopyDiagnostics_Click"
+                            HorizontalAlignment="Left" Margin="0,0,0,6"/>
+                    <TextBox x:Name="DiagnosticsText" FontFamily="Consolas" IsReadOnly="True"
+                             AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"/>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="Best Mixes">
+                <Grid Margin="12" MaxWidth="900" HorizontalAlignment="Left">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel Margin="0,0,0,10">
+                        <TextBlock Text="BEST UNLOCKED MIXES" FontWeight="Bold" FontSize="18" Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="Highest sale-price recipes discovered in the current save. Prices come directly from the live game session."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <DataGrid Grid.Row="1" x:Name="MixRecommendationsGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Result" Binding="{Binding Product}" Width="2*"/>
+                            <DataGridTextColumn Header="Mix" Binding="{Binding Combination}" Width="3*"/>
+                            <DataGridTextColumn Header="Sale price" Binding="{Binding DisplayPrice}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Mods">
+                <Grid Margin="12" MaxWidth="900" HorizontalAlignment="Left">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Refresh catalogue" Click="RefreshMods_Click" Margin="8,0,0,0"/>
+                        <StackPanel>
+                            <TextBlock Text="COMPANION MODS" FontWeight="Bold" FontSize="18" Foreground="{StaticResource AccentBrush}"/>
+                            <TextBlock Text="Enable or disable verified mods. Disabling a mod preserves its player data. Close Schedule I before changing mods."
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border Grid.Row="1" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="9" Margin="0,10,0,10">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Apply catalogue URL" Click="ApplyModCatalogUrl_Click" Margin="8,0,0,0"/>
+                            <TextBox x:Name="ModCatalogUrlText" ToolTip="Optional HTTPS URL to your VPS or release catalogue. Leave blank to use bundled mods."/>
+                        </DockPanel>
+                    </Border>
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="ManagedModsList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,9">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <WrapPanel>
+                                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding Version}" Foreground="{StaticResource MutedBrush}" Margin="8,2,0,0"/>
+                                                    <Border Background="{StaticResource AccentDarkBrush}" CornerRadius="3" Margin="8,0,0,0" Padding="5,2"><TextBlock Text="{Binding Badge}" FontSize="9" Foreground="{StaticResource AccentBrush}"/></Border>
+                                                </WrapPanel>
+                                                <TextBlock Text="{Binding Description}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,15,0"/>
+                                                <TextBlock Text="{Binding State}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                            <CheckBox Grid.Column="1" Style="{StaticResource SwitchCheckBox}" Content="Backpack enabled"
+                                                      IsChecked="{Binding Enabled, Mode=OneWay}" Tag="{Binding Id}" Click="ToggleManagedMod_Click"
+                                                      VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Settings">
+                <ScrollViewer>
+                    <StackPanel Margin="12" MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock Text="Dashboard panels" FontWeight="Bold" FontSize="16"/>
+                        <CheckBox x:Name="ShowClockCheck" Style="{StaticResource SwitchCheckBox}" Content="Show in-game clock" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="Use24HourClockCheck" Style="{StaticResource SwitchCheckBox}" Content="Use 24-hour clock" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowQuestPanelCheck" Style="{StaticResource SwitchCheckBox}" Content="Show current quests" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowMessagePanelCheck" Style="{StaticResource SwitchCheckBox}" Content="Show Active Messages" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowOrdersPanelCheck" Style="{StaticResource SwitchCheckBox}" Content="Show Active Orders" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowPositionStatusCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Show map position coordinates" Click="SettingsDisplayOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowDiagnosticsTabCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Show Diagnostics tab" Click="SettingsDisplayOptions_Click" Margin="0,8,0,12"/>
+
+                        <TextBlock Text="Map display" FontWeight="Bold" FontSize="16"/>
+                        <CheckBox x:Name="ShowSewerOverlayCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Show sewer tunnels underground" Click="SettingsDisplayOptions_Click" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="ShowSewerEntrancesCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Show sewer entrances" Click="SettingsDisplayOptions_Click" Margin="0,8,0,14"/>
+
+                        <TextBlock Text="Developer tools" FontWeight="Bold" FontSize="16"/>
+                        <CheckBox x:Name="DevToolsEnabledCheck" Style="{StaticResource SwitchCheckBox}" Content="Enable DevTools"
+                                  Click="DevToolsEnabled_Click" Margin="0,7,0,0"/>
+                        <TextBlock Text="DevTools issue built-in console commands and can modify the current game session."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="18,4,0,8"/>
+                        <GroupBox x:Name="DevToolsPanel" Header="DevTools" Margin="0,0,0,14" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Session" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <CheckBox x:Name="FreezeTimeCheck" Style="{StaticResource SwitchCheckBox}" Content="Freeze game clock" Click="FreezeTime_Click"/>
+                                <CheckBox x:Name="ShowFpsCheck" Style="{StaticResource SwitchCheckBox}" Content="Show in-game FPS" Click="ShowFps_Click" Margin="0,8,0,0"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <TextBlock Text="Time (HHMM)" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBox x:Name="SetTimeText" Width="64" Margin="8,0,5,0" Text="1200"/>
+                                    <Button Content="Set time" Click="SetTime_Click"/>
+                                    <TextBlock Text="Weather" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <ComboBox x:Name="WeatherCombo" Width="105" Margin="8,0,5,0" IsEditable="True" Text="clear">
+                                        <ComboBoxItem Content="clear"/>
+                                    </ComboBox>
+                                    <Button Content="Apply" Click="SetWeather_Click"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="Dealer and game interfaces" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock Text="Choose a recruited dealer to open their phone management and inventory interface."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,7"/>
+                                <WrapPanel>
+                                    <ComboBox x:Name="DealerDebugCombo" Width="210" DisplayMemberPath="Title"/>
+                                    <Button Content="Talk to dealer" Click="OpenDealer_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <ComboBox x:Name="ShopDebugCombo" Width="210" IsEditable="True"
+                                              ToolTip="Supported interfaces currently detected by the game"/>
+                                    <Button Content="Open selected interface" Click="OpenShop_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="Inventory and economy" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <TextBox x:Name="ItemIdText" Width="150" ToolTip="Registry item ID, for example ogkush"/>
+                                    <TextBox x:Name="ItemQuantityText" Width="50" Margin="6,0,0,0" Text="1" ToolTip="Quantity"/>
+                                    <Button Content="Add item" Click="AddItem_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Clear inventory" Click="ClearInventory_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <TextBlock Text="Cash change" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBox x:Name="CashChangeText" Width="80" Margin="6,0,5,0" Text="1000"/>
+                                    <Button Content="Apply" Click="ChangeCash_Click"/>
+                                    <TextBlock Text="Online change" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBox x:Name="OnlineChangeText" Width="80" Margin="6,0,5,0" Text="1000"/>
+                                    <Button Content="Apply" Click="ChangeOnlineBalance_Click"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="World and movement" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <Button Content="Clear trash now" Click="ClearTrash_Click"/>
+                                    <Button Content="Set clear weather" Click="ClearWeather_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Toggle free camera" Click="ToggleFreeCam_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <TextBlock Text="Move speed" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBox x:Name="MoveSpeedText" Width="60" Margin="6,0,5,0" Text="1"/>
+                                    <Button Content="Apply" Click="SetMoveSpeed_Click"/>
+                                    <TextBlock Text="Vehicle ID" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBox x:Name="VehicleIdText" Width="125" Margin="6,0,5,0"/>
+                                    <Button Content="Spawn" Click="SpawnVehicle_Click"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <CheckBox x:Name="AutoClearTrashCheck" Style="{StaticResource SwitchCheckBox}" Content="Auto-clear trash" Click="AutoClearTrash_Click"/>
+                                    <TextBox x:Name="TrashIntervalText" Width="45" Margin="8,0,4,0" Text="30" LostFocus="TrashInterval_Changed"/>
+                                    <TextBlock Text="seconds (5–60)" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="Built-in console" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock Text="Runs one command through Schedule I's own developer console."
+                                           Foreground="{StaticResource MutedBrush}" Margin="0,3,0,7"/>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Run command" Click="RunConsoleCommand_Click" Margin="6,0,0,0"/>
+                                    <TextBox x:Name="RawConsoleCommandText"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <CheckBox x:Name="AlwaysOnTopCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Keep companion above other windows" Click="SettingsGeneralOptions_Click"/>
+                        <CheckBox x:Name="StartOnSecondMonitorCheck" Style="{StaticResource SwitchCheckBox}"
+                                  Content="Move to second monitor when available" Click="SettingsGeneralOptions_Click" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="2" Background="#141B16" BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1,0,0,0" Margin="0,10,0,0" Padding="9,6">
+            <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+        </Border>
+    </Grid>
+</Window>

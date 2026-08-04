@@ -1,0 +1,72 @@
+[
+  {
+    "Id": "portal-1",
+    "Name": "North-central sewer access",
+    "SurfaceX": -51.25092,
+    "SurfaceY": 0.974713,
+    "SurfaceZ": 91.45012,
+    "UndergroundX": -51.458614,
+    "UndergroundY": -6.5350003,
+    "UndergroundZ": 91.46959,
+    "MapX": -309.08211,
+    "MapY": 476.6993,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "portal-2",
+    "Name": "North-east sewer access",
+    "SurfaceX": -8.5,
+    "SurfaceY": -3.1,
+    "SurfaceZ": 114.9,
+    "UndergroundX": -9.0,
+    "UndergroundY": -4.0,
+    "UndergroundZ": 78.1,
+    "MapX": -95.071,
+    "MapY": 594.0894,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "portal-3",
+    "Name": "West sewer access",
+    "SurfaceX": -82.2,
+    "SurfaceY": -3.2,
+    "SurfaceZ": 68.5,
+    "UndergroundX": -43.4,
+    "UndergroundY": -4.3,
+    "UndergroundZ": 54.5,
+    "MapX": -464.0132,
+    "MapY": 361.811,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "portal-4",
+    "Name": "South-central sewer access",
+    "SurfaceX": 26.1,
+    "SurfaceY": -3.2,
+    "SurfaceZ": 11.3,
+    "UndergroundX": 34.0,
+    "UndergroundY": -4.3,
+    "UndergroundZ": 13.1,
+    "MapX": 78.1366,
+    "MapY": 75.4678,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "portal-5",
+    "Name": "East sewer access",
+    "SurfaceX": 100.5,
+    "SurfaceY": -0.1,
+    "SurfaceZ": -4.5,
+    "UndergroundX": 105.4,
+    "UndergroundY": -4.2,
+    "UndergroundZ": -2.1,
+    "MapX": 450.583,
+    "MapY": -3.627,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  }
+]

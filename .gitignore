@@ -1,0 +1,37 @@
+# Build output
+**/bin/
+**/obj/
+dist/
+
+# Packaged archives and checksums
+*.zip
+*.zip.sha256
+
+# Local tooling and editor state
+.agents/
+.codex/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Runtime/player data and logs
+UserData/
+Logs/
+*.log
+crash-reports/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+secrets.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

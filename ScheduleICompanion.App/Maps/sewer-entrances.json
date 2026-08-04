@@ -1,0 +1,90 @@
+[
+  {
+    "Id": "sewer-1",
+    "Name": "Sewer Entrance 1",
+    "WorldX": -51.25092,
+    "WorldY": 0.974713,
+    "WorldZ": 91.45012,
+    "MapX": -309.09702,
+    "MapY": 476.3053,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-2",
+    "Name": "Sewer Entrance 2",
+    "WorldX": -8.488149,
+    "WorldY": -3.1347578,
+    "WorldZ": 114.572174,
+    "MapX": -95.01137,
+    "MapY": 592.0625,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-3",
+    "Name": "Sewer Entrance 3",
+    "WorldX": -81.89377,
+    "WorldY": -3.1620765,
+    "WorldZ": 68.47701,
+    "MapX": -462.506,
+    "MapY": 361.29376,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-4",
+    "Name": "Sewer Entrance 4",
+    "WorldX": 0.30682218,
+    "WorldY": -4.0350003,
+    "WorldZ": 52.500885,
+    "MapX": -50.98061,
+    "MapY": 281.31155,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-5",
+    "Name": "Sewer Entrance 5",
+    "WorldX": 52.303146,
+    "WorldY": -8.035001,
+    "WorldZ": 52.49308,
+    "MapX": 209.3315,
+    "MapY": 281.2725,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-6",
+    "Name": "Sewer Entrance 6",
+    "WorldX": 29.807266,
+    "WorldY": -8.035001,
+    "WorldZ": 86.04501,
+    "MapX": 96.70911,
+    "MapY": 449.24542,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-7",
+    "Name": "Sewer Entrance 7",
+    "WorldX": 26.846014,
+    "WorldY": -3.18854,
+    "WorldZ": 11.387775,
+    "MapX": 81.884026,
+    "MapY": 75.48471,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  },
+  {
+    "Id": "sewer-8",
+    "Name": "Sewer Entrance 8",
+    "WorldX": 100.53838,
+    "WorldY": -0.13499837,
+    "WorldZ": -4.8074555,
+    "MapX": 450.81424,
+    "MapY": -5.59438,
+    "MapWidth": 2048,
+    "MapHeight": 2048
+  }
+]

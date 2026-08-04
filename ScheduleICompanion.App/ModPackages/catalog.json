@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "mods": [
+    {
+      "id": "personal-backpack",
+      "name": "Reliable Personal Backpack",
+      "version": "0.2.0",
+      "description": "Twelve private, per-career slots. Press B in-game. Local host verification covers compatible co-op players for the current session; no external server required.",
+      "dllName": "ScheduleICompanion.Backpack.dll",
+      "downloadUrl": "bundled:ScheduleICompanion.Backpack.dll",
+      "sha256": "60B0E9865CA1982F1DA38E3188BD38DC61C92470CAD24DD41362CFCE9CF80D99",
+      "experimental": true,
+      "multiplayerPolicy": "host-and-owner-required"
+    }
+  ]
+}
