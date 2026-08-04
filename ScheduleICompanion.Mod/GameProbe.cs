@@ -959,23 +959,60 @@ public sealed class GameProbe
         try
         {
             var manager = UnityEngine.Object.FindObjectOfType<ProductManager>();
-            if (manager?.mixRecipes is null) return Array.Empty<MixRecommendationPayload>();
+            if (manager is null) return Array.Empty<MixRecommendationPayload>();
             var rows = new List<MixRecommendationPayload>();
-            foreach (var recipe in manager.mixRecipes)
+            if (manager.mixRecipes is not null)
             {
-                if (recipe is null || !recipe.Unlocked ||
-                    recipe.Product?.Item is not ProductDefinition output || recipe.Ingredients is null) continue;
-                var ingredients = new List<string>();
-                foreach (var entry in recipe.Ingredients)
+                foreach (var recipe in manager.mixRecipes)
                 {
-                    var item = entry?.Item;
-                    if (item is StorableItemDefinition { IsUnlocked: true } unlocked)
-                        ingredients.Add(unlocked.Name);
+                    if (recipe is null || !recipe.Unlocked ||
+                        recipe.Product?.Item is not ProductDefinition output || recipe.Ingredients is null) continue;
+                    var ingredients = new List<string>();
+                    foreach (var entry in recipe.Ingredients)
+                    {
+                        var item = entry?.Item;
+                        if (item is StorableItemDefinition { IsUnlocked: true } unlocked)
+                            ingredients.Add(unlocked.Name);
+                    }
+                    if (ingredients.Count < 2) continue;
+                    rows.Add(new MixRecommendationPayload(
+                        output.Name, ingredients[0], string.Join(" + ", ingredients.Skip(1)), manager.GetPrice(output)));
                 }
-                if (ingredients.Count < 2) continue;
-                rows.Add(new MixRecommendationPayload(
-                    output.Name, ingredients[0], string.Join(" + ", ingredients.Skip(1)), manager.GetPrice(output)));
             }
+
+            static string Key(string value) => new(value.Where(char.IsLetterOrDigit)
+                .Select(char.ToLowerInvariant).ToArray());
+            var unlockedIngredients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (manager.ValidMixIngredients is not null)
+                foreach (var ingredient in manager.ValidMixIngredients)
+                    if (ingredient is StorableItemDefinition { IsUnlocked: true } unlocked)
+                        unlockedIngredients.Add(Key(unlocked.Name));
+
+            var unlockedProducts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (manager.AllProducts is not null)
+                foreach (var product in manager.AllProducts)
+                    if (product is StorableItemDefinition { IsUnlocked: true } unlocked)
+                        unlockedProducts.Add(Key(unlocked.Name));
+
+            var guideRecipes = new (string Product, float Price, string[] Ingredients)[]
+            {
+                ("Cocaine", 735f, new[] { "Motor Oil", "Cuke", "Paracetamol", "Gasoline", "Cuke", "Battery", "Horse Semen", "Mega Bean" }),
+                ("Meth", 340f, new[] { "Banana", "Cuke", "Paracetamol", "Gasoline", "Cuke", "Battery", "Horse Semen", "Mega Bean" }),
+                ("OG Kush", 172f, new[] { "Horse Semen", "Paracetamol", "Gasoline", "Cuke", "Mega Bean", "Paracetamol", "Mega Bean", "Battery" }),
+                ("Granddaddy Purple", 167f, new[] { "Banana", "Cuke", "Paracetamol", "Gasoline", "Cuke", "Battery", "Horse Semen", "Mega Bean" }),
+                ("Green Crack", 148f, new[] { "Gasoline", "Paracetamol", "Cuke", "Banana", "Gasoline", "Cuke", "Viagra", "Banana" }),
+                ("Sour Diesel", 144f, new[] { "Iodine", "Paracetamol", "Chili", "Viagra", "Cuke", "Motor Oil" }),
+                ("OG Kush (Beginner)", 127f, new[] { "Donut", "Mouth Wash", "Cuke", "Banana", "Viagra", "Flu Medicine" })
+            };
+            foreach (var guide in guideRecipes)
+            {
+                var baseName = guide.Product.Replace(" (Beginner)", "", StringComparison.OrdinalIgnoreCase);
+                if (!unlockedProducts.Contains(Key(baseName)) ||
+                    guide.Ingredients.Any(ingredient => !unlockedIngredients.Contains(Key(ingredient)))) continue;
+                rows.Add(new MixRecommendationPayload(
+                    guide.Product + " (Guide)", baseName, string.Join(" + ", guide.Ingredients), guide.Price));
+            }
+
             return rows.OrderByDescending(row => row.Price).ThenBy(row => row.Product).Take(10).ToArray();
         }
         catch { return Array.Empty<MixRecommendationPayload>(); }

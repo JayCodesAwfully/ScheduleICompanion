@@ -103,6 +103,10 @@ public sealed class ClonalCultivationMod : MelonMod
             if (product is not WeedDefinition weed || string.IsNullOrWhiteSpace(weed.ID)) continue;
             var seedId = SeedId(weed.ID);
             _productsBySeed[seedId] = weed;
+            // Planting uses a quality-specific deterministic seed ID. Every peer must
+            // register all of those IDs before an RPC can refer to one of them.
+            foreach (var quality in Enum.GetValues<EQuality>())
+                EnsureCloneSeed(weed, quality);
             if (_registeredSeeds.Contains(seedId) || Registry.ItemExists(seedId))
             {
                 _registeredSeeds.Add(seedId);
@@ -155,7 +159,7 @@ public sealed class ClonalCultivationMod : MelonMod
         var seedId = SeedId(definition.ID, (int)weed.Quality);
         if (!_productsBySeed.ContainsKey(seedId))
         {
-            EnsureCloneSeed(definition, weed);
+            EnsureCloneSeed(definition, weed.Quality);
             if (!_productsBySeed.ContainsKey(seedId))
             {
                 _status = "That weed variant could not be registered for planting";
@@ -300,18 +304,18 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private static string SeedId(string productId, int quality) => SeedId(productId + "|quality:" + quality);
 
-    private void EnsureCloneSeed(WeedDefinition weed, ProductItemInstance plantedItem)
+    private void EnsureCloneSeed(WeedDefinition weed, EQuality quality)
     {
         if (string.IsNullOrWhiteSpace(weed.ID)) return;
         var registry = UnityEngine.Object.FindObjectOfType<Registry>();
         var template = Registry.GetItem<SeedDefinition>("ogkushseed");
         if (registry is null || template is null) return;
-        var seedId = SeedId(weed.ID, (int)plantedItem.Quality);
+        var seedId = SeedId(weed.ID, (int)quality);
         _productsBySeed[seedId] = weed;
-        var qualityTemplate = plantedItem.GetCopy(1).TryCast<ProductItemInstance>();
+        var qualityTemplate = weed.GetDefaultInstance(1).TryCast<ProductItemInstance>();
         if (qualityTemplate is not null)
         {
-            qualityTemplate.Quality = plantedItem.Quality;
+            qualityTemplate.Quality = quality;
             _qualityBySeed[seedId] = qualityTemplate;
         }
         if (_registeredSeeds.Contains(seedId) || Registry.ItemExists(seedId)) return;

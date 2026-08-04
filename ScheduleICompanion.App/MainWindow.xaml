@@ -462,7 +462,7 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <StackPanel Margin="0,0,0,10">
                         <TextBlock Text="BEST UNLOCKED MIXES" FontWeight="Bold" FontSize="18" Foreground="{StaticResource AccentBrush}"/>
-                        <TextBlock Text="Highest sale-price recipes discovered in the current save. Prices come directly from the live game session."
+                        <TextBlock Text="Highest sale-price recipes available with your unlocked products and ingredients. Includes live recipes and curated guide combinations."
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     </StackPanel>
                     <DataGrid Grid.Row="1" x:Name="MixRecommendationsGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">

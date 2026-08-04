@@ -17,7 +17,7 @@ public sealed record ProductStockPayload(string Product, int Quantity);
 public sealed record MixRecommendationPayload(string Product, string BaseProduct, string Ingredient, float Price)
 {
     public string Combination => $"{BaseProduct} + {Ingredient}";
-    public string DisplayPrice => $"£{Price:N0}";
+    public string DisplayPrice => $"${Price:N0}";
 }
 public sealed record DebugCatalogPayload(IReadOnlyList<string> Interfaces);
 public sealed record OperationItemPayload(string Title, string Detail, string State);
