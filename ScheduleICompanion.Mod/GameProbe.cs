@@ -398,7 +398,7 @@ public sealed class GameProbe
         {
             if (item is null || !item.IsRecruited ||
                 (!string.IsNullOrWhiteSpace(dealerName) &&
-                 !string.Equals(item.fullName, dealerName, StringComparison.OrdinalIgnoreCase))) continue;
+                 !string.Equals(item.FullName, dealerName, StringComparison.OrdinalIgnoreCase))) continue;
             dealer = item;
             break;
         }
@@ -410,7 +410,7 @@ public sealed class GameProbe
         if (dialogue is null)
             throw new InvalidOperationException("The dealer's dialogue controller is not ready.");
         dialogue.StartGenericDialogue(false);
-        Report("DevTools", $"Started dealer dialogue with {dealer.fullName ?? "dealer"}.");
+        Report("DevTools", $"Started dealer dialogue with {dealer.FullName ?? "dealer"}.");
     }
 
     private void OpenShopInterface(string shopName)
@@ -959,7 +959,7 @@ public sealed class GameProbe
             var rows = new List<MixRecommendationPayload>();
             foreach (var recipe in manager.mixRecipes)
             {
-                if (recipe is null || !recipe.Unlocked || !recipe.IsDiscovered ||
+                if (recipe is null || !recipe.Unlocked ||
                     recipe.Product?.Item is not ProductDefinition output || recipe.Ingredients is null) continue;
                 var ingredients = new List<string>();
                 foreach (var entry in recipe.Ingredients)
@@ -992,9 +992,10 @@ public sealed class GameProbe
             stock[name] = stock.TryGetValue(name, out var current) ? current + quantity : quantity;
         }
 
-        if (Player.Local?.Inventory is not null)
+        var playerInventory = Player.Local?._inventory;
+        if (playerInventory is not null)
         {
-            foreach (var slot in Player.Local.Inventory)
+            foreach (var slot in playerInventory)
                 AddItem(slot?.ItemInstance);
         }
 
@@ -1028,8 +1029,8 @@ public sealed class GameProbe
         try
         {
             var customer = contract.Customer?.GetComponent<GameCustomer>();
-            if (customer?.NPC is not null && !string.IsNullOrWhiteSpace(customer.NPC.fullName))
-                return customer.NPC.fullName;
+            if (customer?.NPC is not null && !string.IsNullOrWhiteSpace(customer.NPC.FullName))
+                return customer.NPC.FullName;
         }
         catch { }
         return contract.Title ?? "Customer";
@@ -1068,7 +1069,7 @@ public sealed class GameProbe
         {
             if (dealer is null || !dealer.IsRecruited) continue;
             rows.Add(new OperationItemPayload(
-                dealer.fullName ?? "Dealer",
+                dealer.FullName ?? "Dealer",
                 $"{dealer.GetPackagedProductAmount()} product · £{dealer.Cash:0} cash · {dealer.AssignedCustomers?.Count ?? 0} customers",
                 dealer.IsConscious ? "Good" : "Warning"));
         }
@@ -1101,7 +1102,7 @@ public sealed class GameProbe
                 var working = employee.IsAnyWorkInProgress();
                 var issues = employee.WorkIssues?.Count ?? 0;
                 return new OperationItemPayload(
-                    employee.fullName ?? employee.Type.ToString(),
+                    employee.FullName ?? employee.Type.ToString(),
                     $"{employee.Type} · {(working ? "working" : "idle")} · {(employee.PaidForToday ? "paid" : "unpaid")}",
                     issues > 0 || !employee.PaidForToday ? "Warning" : working ? "Good" : "Idle");
             }).ToArray();
@@ -1577,9 +1578,9 @@ public sealed class GameProbe
             visibleIds.Add(id);
             _potentialCustomerIds.Add(id);
             _trackedNpcs[id] = npc.transform;
-            _trackedNpcNames[id] = string.IsNullOrWhiteSpace(npc.fullName)
+            _trackedNpcNames[id] = string.IsNullOrWhiteSpace(npc.FullName)
                 ? npc.name ?? "Potential customer"
-                : npc.fullName;
+                : npc.FullName;
             _trackedNpcKinds[id] = "Potential customer";
             _trackedNpcMarkerIds[id] = $"potential-customer-{portraitKey}";
         }

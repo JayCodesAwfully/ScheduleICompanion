@@ -101,11 +101,20 @@ if ($GameRunning) {
     else {
         Write-Host 'Stable bootstrap is unchanged; only the live runtime was replaced.' -ForegroundColor Green
     }
+    $BackpackChanged = -not (Test-Path $InstalledBackpackMod) -or
+        ((Get-FileHash $BackpackDll -Algorithm SHA256).Hash -ne (Get-FileHash $InstalledBackpackMod -Algorithm SHA256).Hash)
+    if ($BackpackChanged) {
+        Copy-Item $BackpackDll (Join-Path $AppDir 'ScheduleICompanion.Backpack.pending-install.dll') -Force
+        Write-Host 'Backpack update staged. Run this installer with the game closed to activate it.' -ForegroundColor Yellow
+    }
 }
 else {
     Copy-Item $ModDll $InstalledMod -Force
+    Copy-Item $BackpackDll $InstalledBackpackMod -Force
     $StagedMod = Join-Path $AppDir 'ScheduleICompanion.Mod.pending-install.dll'
     if (Test-Path $StagedMod) { Remove-Item $StagedMod -Force }
+    $StagedBackpack = Join-Path $AppDir 'ScheduleICompanion.Backpack.pending-install.dll'
+    if (Test-Path $StagedBackpack) { Remove-Item $StagedBackpack -Force }
 }
 
 Step 'Starting the companion application'

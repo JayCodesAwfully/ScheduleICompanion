@@ -1,15 +1,20 @@
 using System.Security.Cryptography;
 using System.Text;
 using HarmonyLib;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppFishySteamworks;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Networking;
 using Il2CppScheduleOne.Persistence;
 using Il2CppScheduleOne.PlayerScripts;
+using Il2CppScheduleOne.Storage;
+using Il2CppScheduleOne.UI;
+using Il2CppScheduleOne.UI.Items;
 using Il2CppSteamworks;
 using MelonLoader;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEngine.UI;
 using Il2CppTMPro;
 
@@ -17,6 +22,7 @@ namespace ScheduleICompanion.Backpack;
 
 public sealed class BackpackMod : MelonMod
 {
+    private static BackpackMod? ActiveInstance;
     private const string ProtocolVersion = "1";
     private BackpackStore? _store;
     private MelonPreferences_Entry<string>? _openKeyEntry;
@@ -30,9 +36,25 @@ public sealed class BackpackMod : MelonMod
     private Vector2 _backpackScroll;
     private CursorLockMode _previousCursorLock;
     private bool _previousCursorVisible;
+    private PlayerCamera? _lockedCamera;
+    private bool _previousCanLook = true;
+    private bool _dragging;
+    private bool _dragFromBackpack;
+    private int _dragSlot = -1;
+    private string _dragLabel = "";
+    private ItemInstance? _dragItem;
+    private int _nativeDragSlot = -1;
+    private ItemInstance? _nativeDragItem;
+    private StorageEntity? _nativeStorage;
+    private GameObject? _nativeStorageObject;
+    private readonly Dictionary<string, BackpackState> _stagedStates = new(StringComparer.OrdinalIgnoreCase);
+    private SaveManager? _saveManager;
+    private UnityAction? _saveCompleteAction;
+    private bool _backpackSaveRequested;
 
     public override void OnInitializeMelon()
     {
+        ActiveInstance = this;
         var category = MelonPreferences.CreateCategory("ScheduleICompanion.Backpack", "Personal Backpack");
         _openKeyEntry = category.CreateEntry("OpenKey", "B", "Open/close key");
         ParseOpenKey();
@@ -48,9 +70,29 @@ public sealed class BackpackMod : MelonMod
         if (_openKeyEntry is not null && !_openKeyEntry.Value.Equals(_openKey.ToString(), StringComparison.OrdinalIgnoreCase))
             ParseOpenKey();
 
-        if (!Input.GetKeyDown(_openKey)) return;
-        if (_menuOpen) CloseMenu();
-        else if (CanOpen()) OpenMenu();
+        MaintainNativeStorageMenu();
+        EnsureSaveCheckpointHook();
+        TryStartBackpackSave();
+
+        if (Input.GetKeyDown(_openKey))
+        {
+            if (_nativeStorage is not null && StorageMenu.Instance is not null && StorageMenu.Instance.IsOpen &&
+                StorageMenu.Instance.OpenedStorageEntity?.Pointer == _nativeStorage.Pointer)
+                StorageMenu.Instance.Close();
+            else if (CanOpen())
+                OpenNativeStorage();
+            return;
+        }
+
+        if (_menuOpen)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            _lockedCamera?.SetCanLook(false);
+            if (Input.GetKeyDown(_openKey)) CloseMenu();
+            return;
+        }
+
     }
 
     public override void OnGUI()
@@ -62,6 +104,8 @@ public sealed class BackpackMod : MelonMod
             CloseMenu();
             return;
         }
+
+        if (DrawSatchelGui(player)) return;
 
         var width = Math.Min(900f, Screen.width - 40f);
         var height = Math.Min(620f, Screen.height - 40f);
@@ -96,9 +140,8 @@ public sealed class BackpackMod : MelonMod
         GUILayout.BeginVertical(GUILayout.Width(410));
         GUILayout.Label("PLAYER INVENTORY", SectionStyle());
         _inventoryScroll = GUILayout.BeginScrollView(_inventoryScroll, GUILayout.Height(470));
-        var inventory = player.GetComponent<PlayerInventory>();
-        if (inventory is null) { GUILayout.Label("Inventory is not ready."); GUILayout.EndScrollView(); GUILayout.EndVertical(); return; }
-        var slots = inventory.GetAllInventorySlots();
+        var slots = GetPlayerInventorySlots(player);
+        if (slots is null) { GUILayout.Label("Inventory is not ready."); GUILayout.EndScrollView(); GUILayout.EndVertical(); return; }
         for (var i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
@@ -133,10 +176,484 @@ public sealed class BackpackMod : MelonMod
         GUILayout.EndVertical();
     }
 
+    private bool DrawSatchelGui(Player player)
+    {
+        CaptureNativeDrag(player);
+        var width = Math.Min(550f, Screen.width - 28f);
+        var height = Math.Min(570f, Screen.height - 28f);
+        var area = new Rect((Screen.width - width) / 2f, (Screen.height - height) / 2f, width, height);
+        DrawRect(area, new Color(0.12f, 0.075f, 0.035f, 0.96f));
+        DrawRect(new Rect(area.x + 8, area.y + 8, area.width - 16, area.height - 16), new Color(0.25f, 0.13f, 0.055f, 0.98f));
+        DrawStitches(area);
+
+        GUI.Label(new Rect(area.x + 24, area.y + 18, 280, 32), "SATCHEL STORAGE", SectionStyle());
+        GUI.Label(new Rect(area.x + 24, area.y + 46, 320, 22),
+            _waitingForHost ? "Synchronising with host..." : _status, StatusStyle());
+        if (GUI.Button(new Rect(area.xMax - 105, area.y + 18, 80, 32), $"Close [{_openKey}]")) CloseMenu();
+
+        var storage = new Rect(area.x + 24, area.y + 78, area.width - 48, area.height - 125);
+        DrawSatchelGrid(storage);
+
+        GUI.Label(new Rect(area.x + 24, area.yMax - 36, area.width - 48, 22),
+            "Drag from your hotbar into a slot; drag back onto an empty hotbar slot to withdraw.", HintStyle());
+
+        if (_dragging)
+        {
+            var mouse = Event.current.mousePosition;
+            var ghost = new Rect(mouse.x + 14, mouse.y + 12, 210, 44);
+            DrawRect(ghost, new Color(0.12f, 0.075f, 0.035f, 0.94f));
+            GUI.Label(new Rect(ghost.x + 9, ghost.y + 6, ghost.width - 18, ghost.height - 12), _dragLabel, SlotTextStyle());
+            if (Event.current.type == EventType.MouseUp)
+            {
+                TryWithdrawToHoveredGameSlot();
+                CancelDrag();
+                Event.current.Use();
+            }
+        }
+
+        return true;
+    }
+
+    private void DrawPocketGrid(Player player, Rect area)
+    {
+        GUI.Label(new Rect(area.x, area.y, area.width, 30), "YOUR POCKETS", SectionStyle());
+        GUI.Label(new Rect(area.x, area.y + 28, area.width, 22), "Drag a stack into an empty satchel slot", HintStyle());
+        var slots = GetPlayerInventorySlots(player);
+        if (slots is null)
+        {
+            GUI.Label(new Rect(area.x, area.y + 65, area.width, 30), "Inventory is not ready.");
+            return;
+        }
+
+        const int columns = 3;
+        const float gap = 10f;
+        var slotWidth = (area.width - gap * (columns - 1)) / columns;
+        const float slotHeight = 88f;
+        for (var i = 0; i < slots.Count; i++)
+        {
+            var row = i / columns;
+            var col = i % columns;
+            var rect = new Rect(area.x + col * (slotWidth + gap), area.y + 62 + row * (slotHeight + gap), slotWidth, slotHeight);
+            var item = slots[i]?.ItemInstance;
+            DrawItemSlot(rect, false, i, Describe(item), item is not null, item);
+        }
+    }
+
+    private void DrawSatchelGrid(Rect area)
+    {
+        const int columns = 3;
+        const float gap = 12f;
+        var slotWidth = (area.width - gap * (columns - 1)) / columns;
+        var slotHeight = (area.height - gap * 3) / 4f;
+        for (var i = 0; i < 12; i++)
+        {
+            var row = i / columns;
+            var col = i % columns;
+            var json = _state?.Slots.ElementAtOrDefault(i) ?? "";
+            var rect = new Rect(area.x + col * (slotWidth + gap), area.y + row * (slotHeight + gap), slotWidth, slotHeight);
+            DrawItemSlot(rect, true, i, DescribeJson(json), !string.IsNullOrWhiteSpace(json), null);
+        }
+    }
+
+    private void DrawItemSlot(Rect rect, bool backpack, int index, string label, bool occupied, ItemInstance? item)
+    {
+        var interactive = _sessionVerified && !_waitingForHost && _state is not null;
+        var hovered = rect.Contains(Event.current.mousePosition);
+        var nativeDropTarget = backpack && _nativeDragSlot >= 0 && !occupied;
+        var isDropTarget = !occupied && ((_dragging && _dragFromBackpack != backpack) || nativeDropTarget);
+        var color = isDropTarget && hovered
+            ? new Color(0.43f, 0.56f, 0.25f, 1f)
+            : occupied ? new Color(0.16f, 0.095f, 0.045f, 1f) : new Color(0.29f, 0.18f, 0.09f, 1f);
+        DrawRect(rect, new Color(0.09f, 0.045f, 0.018f, 1f));
+        DrawRect(new Rect(rect.x + 3, rect.y + 3, rect.width - 6, rect.height - 6), color);
+        GUI.Label(new Rect(rect.x + 8, rect.y + 5, rect.width - 16, 18), $"{index + 1:00}", SlotNumberStyle());
+        GUI.Label(new Rect(rect.x + 8, rect.y + 27, rect.width - 16, rect.height - 32), label, SlotTextStyle());
+
+        if (!interactive) return;
+        if (backpack && Event.current.type == EventType.MouseUp && Event.current.button == 0 && hovered &&
+            !occupied && _nativeDragSlot >= 0 && _nativeDragItem is not null)
+        {
+            RequestTransfer("deposit", _nativeDragSlot, index, _nativeDragItem);
+            _nativeDragSlot = -1;
+            _nativeDragItem = null;
+            Event.current.Use();
+        }
+        else if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && hovered && occupied)
+        {
+            _dragging = true;
+            _dragFromBackpack = backpack;
+            _dragSlot = index;
+            _dragLabel = label;
+            _dragItem = item;
+            Event.current.Use();
+        }
+        else if (Event.current.type == EventType.MouseUp && Event.current.button == 0 && hovered && _dragging && _dragFromBackpack != backpack)
+        {
+            if (occupied)
+            {
+                _status = "Choose an empty destination slot";
+            }
+            else if (_dragFromBackpack)
+            {
+                RequestTransfer("withdraw", index, _dragSlot, null);
+            }
+            else
+            {
+                RequestTransfer("deposit", _dragSlot, index, _dragItem);
+            }
+            CancelDrag();
+            Event.current.Use();
+        }
+    }
+
+    private void CancelDrag()
+    {
+        _dragging = false;
+        _dragFromBackpack = false;
+        _dragSlot = -1;
+        _dragLabel = "";
+        _dragItem = null;
+    }
+
+    private void CaptureNativeDrag(Player player)
+    {
+        try
+        {
+            var manager = ItemUIManager.Instance;
+            if (manager is null || !manager.IsCurrentlyDragging || manager.draggedSlot is null) return;
+            var slots = GetPlayerInventorySlots(player);
+            if (slots is null) return;
+            for (var i = 0; i < slots.Count; i++)
+            {
+                if (slots[i].Pointer != manager.draggedSlot.Pointer) continue;
+                _nativeDragSlot = i;
+                _nativeDragItem = slots[i].ItemInstance;
+                return;
+            }
+        }
+        catch { }
+    }
+
+    private void TryWithdrawToHoveredGameSlot()
+    {
+        if (!_dragFromBackpack || _dragSlot < 0) return;
+        try
+        {
+            var target = ItemUIManager.Instance?.HoveredSlot?.assignedSlot;
+            var slots = Player.Local is null ? null : GetPlayerInventorySlots(Player.Local);
+            if (target is null || slots is null) return;
+            for (var i = 0; i < slots.Count; i++)
+            {
+                if (slots[i].Pointer != target.Pointer) continue;
+                if (slots[i].ItemInstance is null && !slots[i].IsAddLocked)
+                    RequestTransfer("withdraw", i, _dragSlot, null);
+                else
+                    _status = "Choose an empty hotbar slot";
+                return;
+            }
+        }
+        catch { }
+    }
+
+    private static Il2CppReferenceArray<ItemSlot>? GetPlayerInventorySlots(Player player)
+    {
+        try { return player._inventory; }
+        catch { return null; }
+    }
+
+    private static void DrawRect(Rect rect, Color color)
+    {
+        var previous = GUI.color;
+        GUI.color = color;
+        GUI.Box(rect, GUIContent.none);
+        GUI.color = previous;
+    }
+
+    private static void DrawStitches(Rect area)
+    {
+        var stitch = new Color(0.72f, 0.53f, 0.27f, 0.9f);
+        for (var x = area.x + 18; x < area.xMax - 18; x += 16)
+        {
+            DrawRect(new Rect(x, area.y + 14, 8, 2), stitch);
+            DrawRect(new Rect(x, area.yMax - 16, 8, 2), stitch);
+        }
+        for (var y = area.y + 22; y < area.yMax - 22; y += 16)
+        {
+            DrawRect(new Rect(area.x + 14, y, 2, 8), stitch);
+            DrawRect(new Rect(area.xMax - 16, y, 2, 8), stitch);
+        }
+    }
+
+    private void OpenNativeStorage()
+    {
+        LoadLocalState();
+        _sessionVerified = !IsMultiplayerClient();
+        if (IsMultiplayerClient())
+        {
+            _waitingForHost = true;
+            _status = "Waiting for the host snapshot";
+            BackpackProtocol.Send(new BackpackMessage { Type = "hello", Protocol = ProtocolVersion, RequestId = Guid.NewGuid() });
+        }
+
+        EnsureNativeStorage();
+        PopulateNativeStorage();
+        if (_nativeStorage is null || StorageMenu.Instance is null)
+        {
+            _status = "Native storage menu is not ready";
+            return;
+        }
+
+        StorageMenu.Instance.Open(_nativeStorage, (System.Action)NativeStorageClosed);
+        StorageMenu.Instance.SlotGridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        StorageMenu.Instance.SlotGridLayout.constraintCount = 4;
+        for (var i = 0; i < StorageMenu.Instance.SlotsUIs.Count; i++)
+            StorageMenu.Instance.SlotsUIs[i].gameObject.SetActive(i < 12);
+    }
+
+    private void EnsureNativeStorage()
+    {
+        if (_nativeStorage is not null) return;
+        _nativeStorageObject = new GameObject("ScheduleICompanion_PersonalBackpack");
+        _nativeStorageObject.SetActive(false);
+        _nativeStorage = _nativeStorageObject.AddComponent<StorageEntity>();
+        _nativeStorage.SlotCount = 12;
+        _nativeStorage.DisplayRowCount = 3;
+        _nativeStorage.StorageEntityName = "Backpack";
+        _nativeStorage.StorageEntitySubtitle = "12 protected slots";
+        _nativeStorage.EmptyOnSleep = false;
+        _nativeStorage.SlotsAreFilterable = false;
+        _nativeStorageObject.SetActive(true);
+
+        var slots = new Il2CppSystem.Collections.Generic.List<ItemSlot>();
+        for (var i = 0; i < 12; i++)
+        {
+            var slot = new ItemSlot(true);
+            slot.SetSlotOwner(new IItemSlotOwner(_nativeStorage.Pointer));
+            slot.SetIsAddLocked(false);
+            slot.SetIsRemovalLocked(false);
+            slots.Add(slot);
+        }
+        _nativeStorage.ItemSlots = slots;
+        UnityEngine.Object.DontDestroyOnLoad(_nativeStorageObject);
+    }
+
+    private void PopulateNativeStorage()
+    {
+        if (_nativeStorage is null || _state is null) return;
+        var slots = _nativeStorage.ItemSlots;
+        for (var i = 0; i < slots.Count && i < 12; i++)
+        {
+            slots[i].ClearStoredInstance(false);
+            var json = _state.Slots.ElementAtOrDefault(i);
+            if (string.IsNullOrWhiteSpace(json)) continue;
+            try
+            {
+                var item = ItemDeserializer.LoadItem(json);
+                if (item is not null) slots[i].SetStoredItem(item, false);
+            }
+            catch { }
+        }
+    }
+
+    private void NativeStorageClosed()
+    {
+        if (_nativeStorage is null || _state is null) return;
+        var slots = _nativeStorage.ItemSlots;
+        for (var i = 0; i < 12; i++)
+            _state.Slots[i] = i < slots.Count && slots[i].ItemInstance is { } item ? SerializeItem(item) : "";
+        _state.Revision++;
+        StageState(_state);
+        _waitingForHost = false;
+        _status = "Closing Backpack and saving game...";
+        RestoreSharedStorageMenu();
+        _backpackSaveRequested = true;
+        TryStartBackpackSave();
+    }
+
+    private static void RestoreSharedStorageMenu()
+    {
+        var menu = StorageMenu.Instance;
+        if (menu is null) return;
+        menu.SlotGridLayout.constraint = GridLayoutGroup.Constraint.FixedRowCount;
+        menu.SlotGridLayout.constraintCount = 1;
+    }
+
+    private void MaintainNativeStorageMenu()
+    {
+        var menu = StorageMenu.Instance;
+        if (menu is null || !menu.IsOpen) return;
+
+        if (_nativeStorage is not null && menu.OpenedStorageEntity?.Pointer == _nativeStorage.Pointer)
+        {
+            menu.SlotGridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            menu.SlotGridLayout.constraintCount = 4;
+            for (var i = 0; i < menu.SlotsUIs.Count; i++)
+            {
+                var visible = i < 12;
+                if (menu.SlotsUIs[i].gameObject.activeSelf != visible)
+                    menu.SlotsUIs[i].gameObject.SetActive(visible);
+                if (visible) menu.SlotsUIs[i].UpdateUI();
+            }
+            PersistNativeStorageIfChanged();
+            return;
+        }
+
+        var storage = menu.OpenedStorageEntity;
+        if (storage is null) return;
+        menu.SlotGridLayout.constraint = GridLayoutGroup.Constraint.FixedRowCount;
+        menu.SlotGridLayout.constraintCount = Math.Max(1, storage.DisplayRowCount);
+        var slotCount = storage.ItemSlots?.Count ?? 0;
+        for (var i = 0; i < menu.SlotsUIs.Count; i++)
+        {
+            var visible = i < slotCount;
+            if (menu.SlotsUIs[i].gameObject.activeSelf != visible)
+                menu.SlotsUIs[i].gameObject.SetActive(visible);
+        }
+    }
+
+    private void PersistNativeStorageIfChanged()
+    {
+        if (_nativeStorage is null || _state is null) return;
+        var slots = _nativeStorage.ItemSlots;
+        var changed = false;
+        for (var i = 0; i < 12; i++)
+        {
+            var json = i < slots.Count && slots[i].ItemInstance is { } item ? SerializeItem(item) : "";
+            if (string.Equals(_state.Slots[i], json, StringComparison.Ordinal)) continue;
+            _state.Slots[i] = json;
+            changed = true;
+        }
+        if (!changed) return;
+        _state.Revision++;
+        StageState(_state);
+    }
+
+    private void HandleNativeDrop(ItemUIManager manager)
+    {
+        if (_nativeStorage is null || manager.draggedSlot?.assignedSlot is null || manager.HoveredSlot?.assignedSlot is null)
+            return;
+
+        var source = manager.draggedSlot.assignedSlot;
+        var target = manager.HoveredSlot.assignedSlot;
+        var backpackSlots = _nativeStorage.ItemSlots;
+        var backpackSource = FindSlot(backpackSlots, source);
+        var backpackTarget = FindSlot(backpackSlots, target);
+        if (backpackSource < 0 && backpackTarget < 0) return;
+
+        var playerSlots = Player.Local is null ? null : GetPlayerInventorySlots(Player.Local);
+        if (playerSlots is null) return;
+        var inventorySource = FindSlot(playerSlots, source);
+        var inventoryTarget = FindSlot(playerSlots, target);
+
+        if (inventorySource >= 0 && backpackTarget >= 0)
+        {
+            if (target.ItemInstance is not null)
+                _status = "Choose an empty Backpack slot";
+            else
+            {
+                LoggerInstance.Msg($"Backpack drop: inventory slot {inventorySource + 1} to Backpack slot {backpackTarget + 1}.");
+                RequestTransfer("deposit", inventorySource, backpackTarget, source.ItemInstance);
+            }
+        }
+        else if (backpackSource >= 0 && inventoryTarget >= 0)
+        {
+            if (target.ItemInstance is not null || target.IsAddLocked)
+                _status = "Choose an empty hotbar slot";
+            else
+            {
+                LoggerInstance.Msg($"Backpack drop: Backpack slot {backpackSource + 1} to inventory slot {inventoryTarget + 1}.");
+                RequestTransfer("withdraw", inventoryTarget, backpackSource, null);
+            }
+        }
+
+        PopulateNativeStorage();
+    }
+
+    private static int FindSlot(Il2CppSystem.Collections.Generic.List<ItemSlot> slots, ItemSlot target)
+    {
+        for (var i = 0; i < slots.Count; i++)
+            if (slots[i].Pointer == target.Pointer) return i;
+        return -1;
+    }
+
+    private static int FindSlot(Il2CppReferenceArray<ItemSlot> slots, ItemSlot target)
+    {
+        for (var i = 0; i < slots.Length; i++)
+            if (slots[i].Pointer == target.Pointer) return i;
+        return -1;
+    }
+
+    private bool OwnsNativeSlot(ItemSlot slot)
+    {
+        if (_nativeStorage is null) return false;
+        return FindSlot(_nativeStorage.ItemSlots, slot) >= 0;
+    }
+
+    [HarmonyPatch(typeof(ItemSlot), "SetStoredItem")]
+    private static class NativeBackpackSetItemPatch
+    {
+        private static bool Prefix(ItemSlot __instance, ItemInstance instance)
+        {
+            if (ActiveInstance?.OwnsNativeSlot(__instance) != true) return true;
+            __instance._ItemInstance_k__BackingField = instance;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ItemSlot), "ClearStoredInstance")]
+    private static class NativeBackpackClearItemPatch
+    {
+        private static bool Prefix(ItemSlot __instance)
+        {
+            if (ActiveInstance?.OwnsNativeSlot(__instance) != true) return true;
+            __instance._ItemInstance_k__BackingField = null;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(StorageEntity), "SetItemSlotQuantity")]
+    private static class NativeBackpackQuantityPatch
+    {
+        private static bool Prefix(StorageEntity __instance, int itemSlotIndex, int quantity)
+        {
+            var active = ActiveInstance;
+            if (active?._nativeStorage is null || __instance.Pointer != active._nativeStorage.Pointer) return true;
+            var slots = __instance.ItemSlots;
+            if (itemSlotIndex < 0 || itemSlotIndex >= slots.Count || slots[itemSlotIndex].ItemInstance is not { } item)
+                return false;
+            item.SetQuantity(Math.Max(0, quantity));
+            if (quantity <= 0) slots[itemSlotIndex]._ItemInstance_k__BackingField = null;
+            active.PersistNativeStorageIfChanged();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ItemUIManager), "EndDrag")]
+    private static class NativeBackpackRefreshPatch
+    {
+        private static void Postfix()
+        {
+            var instance = ActiveInstance;
+            var menu = StorageMenu.Instance;
+            if (instance?._nativeStorage is null || menu is null || !menu.IsOpen ||
+                menu.OpenedStorageEntity?.Pointer != instance._nativeStorage.Pointer) return;
+            for (var i = 0; i < menu.SlotsUIs.Count; i++)
+                if (menu.SlotsUIs[i].gameObject.activeSelf) menu.SlotsUIs[i].UpdateUI();
+        }
+    }
+
     private void OpenMenu()
     {
         _previousCursorLock = Cursor.lockState;
         _previousCursorVisible = Cursor.visible;
+        _lockedCamera = PlayerCamera.Instance;
+        if (_lockedCamera is not null)
+        {
+            _previousCanLook = _lockedCamera.CanLook;
+            _lockedCamera.SetCanLook(false);
+            _lockedCamera.FreeMouse(true);
+            _lockedCamera.AddActiveUIElement("ScheduleICompanion.Backpack");
+        }
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         _menuOpen = true;
@@ -160,6 +677,14 @@ public sealed class BackpackMod : MelonMod
         _menuOpen = false;
         _waitingForHost = false;
         _sessionVerified = false;
+        CancelDrag();
+        if (_lockedCamera is not null)
+        {
+            _lockedCamera.RemoveActiveUIElement("ScheduleICompanion.Backpack");
+            _lockedCamera.SetCanLook(_previousCanLook);
+            _lockedCamera.FreeMouse(false);
+            _lockedCamera = null;
+        }
         Cursor.lockState = _previousCursorLock;
         Cursor.visible = _previousCursorVisible;
     }
@@ -221,7 +746,8 @@ public sealed class BackpackMod : MelonMod
             if (message.State is not null)
             {
                 _state = message.State;
-                _store?.Save(_state);
+                StageState(_state);
+                PopulateNativeStorage();
             }
             _waitingForHost = false;
             _status = !_sessionVerified
@@ -244,7 +770,7 @@ public sealed class BackpackMod : MelonMod
             return;
         }
 
-        var state = _store!.Load(sender, CareerId());
+        var state = LoadWorkingState(sender, CareerId());
         RecoverInterrupted(state, player);
         if (request.Type == "hello")
         {
@@ -273,25 +799,27 @@ public sealed class BackpackMod : MelonMod
 
     private void Deposit(BackpackState state, Player player, BackpackMessage request)
     {
-        var playerInventory = player.GetComponent<PlayerInventory>() ?? throw new InvalidOperationException("Player inventory is not ready");
-        var inventory = playerInventory.GetAllInventorySlots();
-        if (request.InventorySlot < 0 || request.InventorySlot >= inventory.Count) throw new InvalidOperationException("Invalid inventory slot");
+        var inventory = GetPlayerInventorySlots(player) ?? throw new InvalidOperationException("Player inventory is not ready");
+        if (request.InventorySlot < 0 || request.InventorySlot >= inventory.Length) throw new InvalidOperationException("Invalid inventory slot");
         var source = inventory[request.InventorySlot];
         var item = source.ItemInstance ?? throw new InvalidOperationException("That inventory slot is now empty");
         var json = SerializeItem(item);
         if (!Fingerprint(json).Equals(request.Fingerprint, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("The source item changed before the host received it");
-        var destination = Array.FindIndex(state.Slots, string.IsNullOrWhiteSpace);
+        var destination = request.BackpackSlot >= 0 && request.BackpackSlot < state.Slots.Length &&
+            string.IsNullOrWhiteSpace(state.Slots[request.BackpackSlot])
+                ? request.BackpackSlot
+                : Array.FindIndex(state.Slots, string.IsNullOrWhiteSpace);
         if (destination < 0) throw new InvalidOperationException("The backpack is full");
 
         var journal = BeginJournal(state, request, "deposit", destination, json);
         journal.Phase = "remove-authorized";
-        _store!.Save(state);
+        StageState(state);
         source.ClearStoredInstance(true);
         state.Slots[destination] = json;
         state.Revision++;
         journal.Phase = "committed";
         TrimJournal(state);
-        _store.Save(state);
+        StageState(state);
     }
 
     private void Withdraw(BackpackState state, Player player, BackpackMessage request)
@@ -300,11 +828,14 @@ public sealed class BackpackMod : MelonMod
         var json = state.Slots[request.BackpackSlot];
         if (string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("That backpack slot is now empty");
         var item = ItemDeserializer.LoadItem(json) ?? throw new InvalidOperationException("The stored item could not be reconstructed and was left untouched");
-        var playerInventory = player.GetComponent<PlayerInventory>() ?? throw new InvalidOperationException("Player inventory is not ready");
-        var inventory = playerInventory.GetAllInventorySlots();
-        var destination = -1;
-        for (var i = 0; i < inventory.Count; i++)
-            if (inventory[i].ItemInstance is null && !inventory[i].IsAddLocked) { destination = i; break; }
+        var inventory = GetPlayerInventorySlots(player) ?? throw new InvalidOperationException("Player inventory is not ready");
+        var destination = request.InventorySlot >= 0 && request.InventorySlot < inventory.Length &&
+            inventory[request.InventorySlot].ItemInstance is null && !inventory[request.InventorySlot].IsAddLocked
+                ? request.InventorySlot
+                : -1;
+        if (destination < 0)
+            for (var i = 0; i < inventory.Length; i++)
+                if (inventory[i].ItemInstance is null && !inventory[i].IsAddLocked) { destination = i; break; }
         if (destination < 0) throw new InvalidOperationException("Your inventory has no empty slot");
 
         var journal = BeginJournal(state, request, "withdraw", request.BackpackSlot, json);
@@ -312,23 +843,22 @@ public sealed class BackpackMod : MelonMod
         state.Slots[request.BackpackSlot] = "";
         state.Revision++;
         journal.Phase = "backpack-removed";
-        _store!.Save(state);
+        StageState(state);
         inventory[destination].SetStoredItem(item, true);
         journal.Phase = "committed";
         TrimJournal(state);
-        _store.Save(state);
+        StageState(state);
     }
 
     private void RecoverInterrupted(BackpackState state, Player player)
     {
         var pending = state.Journal.LastOrDefault(entry => entry.Phase != "committed");
         if (pending is null) return;
-        var playerInventory = player.GetComponent<PlayerInventory>() ?? throw new InvalidOperationException("Player inventory is not ready");
-        var inventory = playerInventory.GetAllInventorySlots();
+        var inventory = GetPlayerInventorySlots(player) ?? throw new InvalidOperationException("Player inventory is not ready");
 
         if (pending.Operation == "deposit" && pending.Phase == "remove-authorized")
         {
-            var sourceStillMatches = pending.InventorySlot >= 0 && pending.InventorySlot < inventory.Count &&
+            var sourceStillMatches = pending.InventorySlot >= 0 && pending.InventorySlot < inventory.Length &&
                 inventory[pending.InventorySlot].ItemInstance is { } source && Fingerprint(SerializeItem(source)) == Fingerprint(pending.ItemJson);
             if (!sourceStillMatches && string.IsNullOrWhiteSpace(state.Slots[pending.BackpackSlot]))
             {
@@ -336,11 +866,11 @@ public sealed class BackpackMod : MelonMod
                 state.Revision++;
             }
             pending.Phase = "committed";
-            _store!.Save(state);
+            StageState(state);
         }
         else if (pending.Operation == "withdraw" && pending.Phase == "backpack-removed")
         {
-            var targetMatches = pending.InventorySlot >= 0 && pending.InventorySlot < inventory.Count &&
+            var targetMatches = pending.InventorySlot >= 0 && pending.InventorySlot < inventory.Length &&
                 inventory[pending.InventorySlot].ItemInstance is { } target && Fingerprint(SerializeItem(target)) == Fingerprint(pending.ItemJson);
             if (!targetMatches && string.IsNullOrWhiteSpace(state.Slots[pending.BackpackSlot]))
             {
@@ -348,7 +878,7 @@ public sealed class BackpackMod : MelonMod
                 state.Revision++;
             }
             pending.Phase = "committed";
-            _store!.Save(state);
+            StageState(state);
         }
     }
 
@@ -364,7 +894,7 @@ public sealed class BackpackMod : MelonMod
             ItemJson = json
         };
         state.Journal.Add(entry);
-        _store!.Save(state);
+        StageState(state);
         return entry;
     }
 
@@ -372,7 +902,7 @@ public sealed class BackpackMod : MelonMod
     {
         if (recipient == LocalSteamId())
         {
-            if (state is not null) { _state = state.Clone(); _store?.Save(_state); }
+            if (state is not null) { _state = state.Clone(); StageState(_state); }
             CompleteRequest(success, status);
             return;
         }
@@ -392,8 +922,56 @@ public sealed class BackpackMod : MelonMod
     private void LoadLocalState()
     {
         var steam = LocalSteamId();
-        _state = _store!.Load(steam, CareerId());
+        _state = LoadWorkingState(steam, CareerId());
         _status = "Local recovery copy loaded";
+    }
+
+    private static string StateKey(ulong owner, string career) => $"{owner}:{career}";
+
+    private BackpackState LoadWorkingState(ulong owner, string career)
+    {
+        var key = StateKey(owner, career);
+        return _stagedStates.TryGetValue(key, out var staged) ? staged.Clone() : _store!.Load(owner, career);
+    }
+
+    private void StageState(BackpackState state)
+    {
+        var snapshot = state.Clone();
+        _stagedStates[StateKey(state.OwnerSteamId, state.CareerId)] = snapshot;
+        // The game save callback is still used as the cross-save checkpoint, but the
+        // recovery copy must survive crashes and shutdown paths that never raise it.
+        _store?.Save(snapshot);
+    }
+
+    private void EnsureSaveCheckpointHook()
+    {
+        if (_saveManager is not null) return;
+        var manager = UnityEngine.Object.FindObjectOfType<SaveManager>();
+        if (manager is null) return;
+        _saveManager = manager;
+        _saveCompleteAction = (System.Action)CommitStagedStates;
+        manager.onSaveComplete.AddListener(_saveCompleteAction);
+    }
+
+    private void CommitStagedStates()
+    {
+        if (_store is null || _stagedStates.Count == 0) return;
+        foreach (var state in _stagedStates.Values)
+            _store.Save(state);
+        _stagedStates.Clear();
+        _status = "Backpack and game saved";
+        LoggerInstance.Msg("Backpack checkpoint committed with the Schedule I save.");
+    }
+
+    private void TryStartBackpackSave()
+    {
+        if (!_backpackSaveRequested) return;
+        EnsureSaveCheckpointHook();
+        if (_saveManager is null || _saveManager.IsSaving) return;
+        _backpackSaveRequested = false;
+        _status = "Saving game and Backpack...";
+        _saveManager.Save();
+        LoggerInstance.Msg("Backpack closed; requested a Schedule I save.");
     }
 
     private static Player? ResolvePlayer(ulong steamId)
@@ -475,7 +1053,35 @@ public sealed class BackpackMod : MelonMod
     private static GUIStyle SectionStyle()
     {
         var style = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold };
-        style.normal.textColor = new Color(0.65f, 0.9f, 0.72f);
+        style.normal.textColor = new Color(0.94f, 0.78f, 0.45f);
+        return style;
+    }
+
+    private static GUIStyle StatusStyle()
+    {
+        var style = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
+        style.normal.textColor = new Color(0.91f, 0.80f, 0.60f);
+        return style;
+    }
+
+    private static GUIStyle HintStyle()
+    {
+        var style = new GUIStyle(GUI.skin.label) { fontSize = 11, wordWrap = true };
+        style.normal.textColor = new Color(0.78f, 0.68f, 0.52f);
+        return style;
+    }
+
+    private static GUIStyle SlotNumberStyle()
+    {
+        var style = new GUIStyle(GUI.skin.label) { fontSize = 10, fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperRight };
+        style.normal.textColor = new Color(0.72f, 0.54f, 0.30f);
+        return style;
+    }
+
+    private static GUIStyle SlotTextStyle()
+    {
+        var style = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+        style.normal.textColor = new Color(0.96f, 0.88f, 0.70f);
         return style;
     }
 
@@ -486,6 +1092,12 @@ public sealed class BackpackMod : MelonMod
 
     public override void OnDeinitializeMelon()
     {
+        ActiveInstance = null;
+        if (_saveManager is not null && _saveCompleteAction is not null)
+            _saveManager.onSaveComplete.RemoveListener(_saveCompleteAction);
+        _saveManager = null;
+        _saveCompleteAction = null;
+        RestoreSharedStorageMenu();
         BackpackProtocol.Received -= OnProtocolMessage;
         if (_menuOpen) CloseMenu();
     }

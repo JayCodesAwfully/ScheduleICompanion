@@ -15,7 +15,17 @@ try
     loaded.Revision = 2;
     store.Save(loaded);
     Check(Directory.GetFiles(root, "*.previous").Length == 1, "previous revision retained");
-    var active = Directory.GetFiles(root, "*.json").Single();
+
+    var legacy = store.Load(0, "Legacy Career");
+    legacy.Slots[3] = "{\"ID\":\"recovered\",\"Quantity\":10}";
+    legacy.Revision = 7;
+    store.Save(legacy);
+    var claimed = store.Load(76561198000000001, "Legacy Career");
+    Check(claimed.OwnerSteamId == 76561198000000001 && claimed.Slots[3] == legacy.Slots[3] &&
+          Directory.GetFiles(root, "*.claimed-by-76561198000000001*").Length == 1,
+        "unidentified backpack claimed by Steam owner");
+
+    var active = Directory.GetFiles(root, "Career_One-*.json").Single();
     File.WriteAllText(active, "not-json");
     var recovered = store.Load(state.OwnerSteamId, state.CareerId);
     Check(recovered.Revision == 0 && Directory.GetFiles(root, "*.corrupt-*").Length == 1, "corrupt state quarantined");

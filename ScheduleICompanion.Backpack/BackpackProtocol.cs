@@ -47,7 +47,7 @@ internal static class BackpackProtocol
         return true;
     }
 
-    [HarmonyPatch(typeof(Lobby), "OnLobbyChatMessage")]
+    [HarmonyPatch(typeof(SteamLobbyService), "OnLobbyChatMessage")]
     private static class LobbyMessagePatch
     {
         private static bool Prefix(LobbyChatMsg_t result)
