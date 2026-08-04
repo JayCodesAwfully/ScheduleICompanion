@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$Version = '1.7.4'
+$Version = '1.7.5'
 $DistRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot 'dist'))
 $PackageRoot = Join-Path $DistRoot "ScheduleICompanion-v$Version"
 $PayloadRoot = Join-Path $PackageRoot 'Payload'

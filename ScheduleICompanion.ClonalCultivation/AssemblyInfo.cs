@@ -1,3 +1,3 @@
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(ScheduleICompanion.ClonalCultivation.ClonalCultivationMod), "Schedule I Companion - Clonal Cultivation", "0.1.0", "James")]
+[assembly: MelonInfo(typeof(ScheduleICompanion.ClonalCultivation.ClonalCultivationMod), "Schedule I Companion - Clonal Cultivation", "0.1.2", "James")]

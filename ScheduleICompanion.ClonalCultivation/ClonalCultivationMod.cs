@@ -20,6 +20,8 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly Dictionary<string, WeedDefinition> _productsBySeed = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ProductItemInstance> _qualityBySeed = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<long, (WeedDefinition Product, ProductItemInstance Template)> _cloneByPot = new();
+    private readonly Dictionary<long, Pot> _trackedPots = new();
+    private readonly HashSet<long> _configuredClonePots = new();
     private readonly HashSet<string> _registeredSeeds = new(StringComparer.OrdinalIgnoreCase);
     private MelonPreferences_Entry<string>? _plantKeyEntry;
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
@@ -27,6 +29,9 @@ public sealed class ClonalCultivationMod : MelonMod
     private bool _plantKeyHeld;
     private bool _registryStateLogged;
     private float _nextRegistryRefresh;
+    private float _nextTraitUpdate;
+    private const float CloneGrowthTimeMultiplier = 1.3f;
+    private const float CloneYieldMultiplier = 0.8f;
     private string _status = "Hold a created weed bud, look at an empty pot, and press P";
 
     public override void OnInitializeMelon()
@@ -46,6 +51,7 @@ public sealed class ClonalCultivationMod : MelonMod
 
     public override void OnUpdate()
     {
+        UpdateClonePlantTraits();
         if (_plantKeyEntry is not null && !_plantKeyEntry.Value.Equals(_plantKey.ToString(), StringComparison.OrdinalIgnoreCase))
             ParsePlantKey();
         if (Time.unscaledTime >= _nextRegistryRefresh)
@@ -194,9 +200,13 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        pot.PlantSeed_Server(seedId, (float)(int)weed.Quality);
+        pot.PlantSeed_Server(seedId, 0f);
         if (_qualityBySeed.TryGetValue(seedId, out var plantedTemplate))
-            _cloneByPot[pot.Pointer.ToInt64()] = (definition, plantedTemplate);
+        {
+            var potKey = pot.Pointer.ToInt64();
+            _cloneByPot[potKey] = (definition, plantedTemplate);
+            _trackedPots[potKey] = pot;
+        }
         var quantityBefore = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         player.RemoveEquippedItemFromInventory(definition.ID, 1);
         var quantityAfter = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
@@ -254,6 +264,32 @@ public sealed class ClonalCultivationMod : MelonMod
         plant.Pot.SetGrowthProgress_Server(1f);
         _status = "Target plant set to full growth";
         LoggerInstance.Msg(_status);
+    }
+
+    private void UpdateClonePlantTraits()
+    {
+        if (_trackedPots.Count == 0 || Time.unscaledTime < _nextTraitUpdate) return;
+        _nextTraitUpdate = Time.unscaledTime + 0.5f;
+        foreach (var entry in _trackedPots.ToArray())
+        {
+            var pot = entry.Value;
+            if (pot is null)
+            {
+                _trackedPots.Remove(entry.Key);
+                _configuredClonePots.Remove(entry.Key);
+                continue;
+            }
+            var plant = pot.Plant;
+            if (plant is null) continue;
+            if (!_configuredClonePots.Contains(entry.Key) && plant.GrowthTime > 0)
+            {
+                var originalGrowthTime = plant.GrowthTime;
+                plant.GrowthTime = Mathf.CeilToInt(originalGrowthTime * CloneGrowthTimeMultiplier);
+                _configuredClonePots.Add(entry.Key);
+                LoggerInstance.Msg($"Clone plant configured: growth time {originalGrowthTime} -> {plant.GrowthTime}; yield capped at 80%.");
+            }
+            plant._YieldMultiplier_k__BackingField = Math.Min(plant.YieldMultiplier, CloneYieldMultiplier);
+        }
     }
 
     private static string SeedId(string productId)
@@ -320,6 +356,7 @@ public sealed class ClonalCultivationMod : MelonMod
         private static void Postfix(WeedPlant __instance, int quantity, ref ItemInstance __result) =>
             __result = Active?.ReplaceHarvest(__instance, quantity, __result) ?? __result;
     }
+
 
     internal CloneRegistry LoadRegistry(ulong ownerSteamId, string careerId) =>
         _store?.Load(ownerSteamId, careerId) ?? CloneRegistry.Create(ownerSteamId, careerId);

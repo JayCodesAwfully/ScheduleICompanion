@@ -15,11 +15,11 @@
     {
       "id": "clonal-cultivation",
       "name": "Cultivation",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Plant a created bud to grow a new plant based from it rather than a seed.",
       "dllName": "ScheduleICompanion.ClonalCultivation.dll",
       "downloadUrl": "bundled:ScheduleICompanion.ClonalCultivation.dll",
-      "sha256": "8F71D2FD9C9D718E5D87CE649AE83B39245D28618D0D47502D70CA54407A8B2D",
+      "sha256": "0175B144006C37D4CC54BB0B5F80FCC3D47F1A0A7AEBB9A267EA073264C8F936",
       "experimental": true,
       "multiplayerPolicy": "host-and-owner-required"
     }

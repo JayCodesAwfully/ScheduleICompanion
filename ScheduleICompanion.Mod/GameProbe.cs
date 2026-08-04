@@ -205,6 +205,12 @@ public sealed class GameProbe
             PublishGameTime();
         }
 
+        if (now >= _nextDebugCatalogPublish)
+        {
+            _nextDebugCatalogPublish = now + 5f;
+            PublishDebugCatalog();
+        }
+
         // Run one dashboard section at a time so scene searches and inventory reads cannot
         // all land in the same Unity frame.
         if (now >= _nextDetailPhase)
@@ -333,11 +339,6 @@ public sealed class GameProbe
             case 10:
                 _operationLaundering = BuildLaunderingStatus();
                 PublishOperationsSnapshot();
-                if (now >= _nextDebugCatalogPublish)
-                {
-                    _nextDebugCatalogPublish = now + 30f;
-                    PublishDebugCatalog();
-                }
                 break;
         }
 
@@ -429,9 +430,10 @@ public sealed class GameProbe
 
     private void OpenGameInterface(string selection)
     {
-        var separator = selection.IndexOf(" · ", StringComparison.Ordinal);
-        var kind = separator < 0 ? "Shop" : selection[..separator];
-        var name = separator < 0 ? selection : selection[(separator + 3)..];
+        selection = selection.Trim();
+        var separator = selection.IndexOf('·');
+        var kind = separator < 0 ? "Shop" : selection[..separator].Trim().TrimEnd('Â').Trim();
+        var name = separator < 0 ? selection : selection[(separator + 1)..].Trim();
         if (kind.Equals("Shop", StringComparison.OrdinalIgnoreCase))
         {
             OpenShopInterface(name);
@@ -484,7 +486,9 @@ public sealed class GameProbe
 
     private void OpenWorldInteraction(Component component, string kind, string name)
     {
-        var interactable = component.GetComponentInChildren<InteractableObject>();
+        var interactable = component.GetComponent<InteractableObject>() ??
+                           component.GetComponentInParent<InteractableObject>() ??
+                           component.GetComponentInChildren<InteractableObject>(true);
         if (interactable is null)
             throw new InvalidOperationException($"The {kind} '{name}' has no interaction controller.");
         interactable.onInteractStart?.Invoke();
