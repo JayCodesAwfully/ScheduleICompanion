@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MelonLoader;
+using MelonLoader.Utils;
 
 namespace ScheduleICompanion.Mod;
 
@@ -15,7 +16,10 @@ public static class CompanionLauncher
                 return;
             }
 
-            var gameDirectory = AppContext.BaseDirectory;
+            var gameDirectory = MelonEnvironment.GameRootDirectory;
+            if (string.IsNullOrWhiteSpace(gameDirectory))
+                gameDirectory = AppContext.BaseDirectory;
+            gameDirectory = Path.GetFullPath(gameDirectory);
             var candidates = new[]
             {
                 Path.Combine(gameDirectory, "ScheduleICompanion", "ScheduleICompanion.App.exe"),

@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$Version = '1.7.3'
+$Version = '1.7.4'
 $DistRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot 'dist'))
 $PackageRoot = Join-Path $DistRoot "ScheduleICompanion-v$Version"
 $PayloadRoot = Join-Path $PackageRoot 'Payload'
@@ -32,7 +32,10 @@ Copy-Item $InteropConfig (Join-Path $InteropPayload 'Config.cfg') -Force
 Step 'Building managed Companion mods'
 dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.Backpack\ScheduleICompanion.Backpack.csproj') -c Release
 if ($LASTEXITCODE -ne 0) { throw "Backpack build failed with exit code $LASTEXITCODE." }
+dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.ClonalCultivation\ScheduleICompanion.ClonalCultivation.csproj') -c Release
+if ($LASTEXITCODE -ne 0) { throw "Clonal Cultivation build failed with exit code $LASTEXITCODE." }
 $BackpackDll = Join-Path $ProjectRoot 'ScheduleICompanion.Backpack\bin\Release\net6.0\ScheduleICompanion.Backpack.dll'
+$ClonalCultivationDll = Join-Path $ProjectRoot 'ScheduleICompanion.ClonalCultivation\bin\Release\net6.0\ScheduleICompanion.ClonalCultivation.dll'
 
 Step 'Publishing self-contained Companion application'
 $AppProject = Join-Path $ProjectRoot 'ScheduleICompanion.App\ScheduleICompanion.App.csproj'
@@ -42,6 +45,7 @@ if ($LASTEXITCODE -ne 0) { throw "Companion publish failed with exit code $LASTE
 Copy-Item $AppPublish (Join-Path $PayloadRoot 'Companion') -Recurse -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $PayloadRoot 'Companion\ModPackages') | Out-Null
 Copy-Item $BackpackDll (Join-Path $PayloadRoot 'Companion\ModPackages\ScheduleICompanion.Backpack.dll') -Force
+Copy-Item $ClonalCultivationDll (Join-Path $PayloadRoot 'Companion\ModPackages\ScheduleICompanion.ClonalCultivation.dll') -Force
 
 Step 'Building MelonLoader bootstrap and reloadable runtime'
 dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.Mod\ScheduleICompanion.Mod.csproj') -c Release

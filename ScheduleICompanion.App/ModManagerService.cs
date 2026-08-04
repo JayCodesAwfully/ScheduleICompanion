@@ -57,6 +57,48 @@ public sealed class ModManagerService
         return File.Exists(Path.Combine(common, "Schedule I.exe")) ? common : null;
     }
 
+    public bool GetCultivationInstantGrow()
+    {
+        var game = FindGameDirectory();
+        if (game is null) return false;
+        var path = Path.Combine(game, "UserData", "MelonPreferences.cfg");
+        if (!File.Exists(path)) return false;
+        var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(path),
+            @"(?ms)^\[ScheduleICompanion_Cultivation\]\s*(?<body>.*?)(?=^\[|\z)");
+        if (!match.Success) return false;
+        var value = System.Text.RegularExpressions.Regex.Match(match.Groups["body"].Value,
+            @"(?m)^InstantGrowTesting\s*=\s*(true|false)\s*$");
+        return value.Success && bool.Parse(value.Groups[1].Value);
+    }
+
+    public void SetCultivationInstantGrow(bool enabled)
+    {
+        var game = FindGameDirectory() ?? throw new DirectoryNotFoundException("Schedule I could not be located.");
+        if (Process.GetProcessesByName("Schedule I").Length > 0)
+            throw new InvalidOperationException("Close Schedule I before changing Cultivation testing settings.");
+        var path = Path.Combine(game, "UserData", "MelonPreferences.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var text = File.Exists(path) ? File.ReadAllText(path) : "";
+        var section = System.Text.RegularExpressions.Regex.Match(text,
+            @"(?ms)^\[ScheduleICompanion_Cultivation\]\s*(?<body>.*?)(?=^\[|\z)");
+        if (!section.Success)
+        {
+            if (text.Length > 0 && !text.EndsWith(Environment.NewLine, StringComparison.Ordinal)) text += Environment.NewLine;
+            text += $"{Environment.NewLine}[ScheduleICompanion_Cultivation]{Environment.NewLine}InstantGrowTesting = {enabled.ToString().ToLowerInvariant()}{Environment.NewLine}";
+        }
+        else
+        {
+            var body = section.Groups["body"].Value;
+            var replaced = System.Text.RegularExpressions.Regex.Replace(body,
+                @"(?m)^InstantGrowTesting\s*=\s*(true|false)\s*$",
+                "InstantGrowTesting = " + enabled.ToString().ToLowerInvariant());
+            if (replaced == body)
+                replaced = $"InstantGrowTesting = {enabled.ToString().ToLowerInvariant()}{Environment.NewLine}" + body;
+            text = text[..section.Groups["body"].Index] + replaced + text[(section.Groups["body"].Index + section.Groups["body"].Length)..];
+        }
+        File.WriteAllText(path, text);
+    }
+
     public async Task<IReadOnlyList<ManagedModRow>> LoadAsync(string? remoteCatalogUrl, CancellationToken cancellationToken)
     {
         ModCatalog? catalog = null;
@@ -93,7 +135,7 @@ public sealed class ModManagerService
         ValidateDefinition(definition);
         var game = FindGameDirectory() ?? throw new DirectoryNotFoundException("Schedule I could not be located.");
         if (Process.GetProcessesByName("Schedule I").Length > 0)
-            throw new InvalidOperationException("Close Schedule I before enabling or disabling mods. Backpack data will remain untouched.");
+            throw new InvalidOperationException("Close Schedule I before enabling or disabling mods. Saved mod data will remain untouched.");
 
         var mods = Path.Combine(game, "Mods");
         var target = Path.Combine(mods, definition.DllName);

@@ -1631,6 +1631,7 @@ public partial class MainWindow : Window
             var rows = await _modManager.LoadAsync(_settings.ModCatalogUrl, CancellationToken.None);
             _managedMods.Clear();
             foreach (var row in rows) _managedMods.Add(row);
+            CultivationInstantGrowCheck.IsChecked = _modManager.GetCultivationInstantGrow();
             StatusText.Text = rows.Count == 0 ? "No mod catalogue was found" : $"{rows.Count} verified mod(s) available";
         }
         catch (Exception ex)
@@ -1664,6 +1665,21 @@ public partial class MainWindow : Window
 
     private async void RefreshMods_Click(object sender, RoutedEventArgs e) => await RefreshModsAsync();
 
+    private void CultivationInstantGrow_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var enabled = CultivationInstantGrowCheck.IsChecked == true;
+            _modManager.SetCultivationInstantGrow(enabled);
+            StatusText.Text = $"Cultivation instant grow {(enabled ? "enabled" : "disabled")}.";
+        }
+        catch (Exception ex)
+        {
+            CultivationInstantGrowCheck.IsChecked = _modManager.GetCultivationInstantGrow();
+            StatusText.Text = ex.Message;
+        }
+    }
+
     private async void ApplyModCatalogUrl_Click(object sender, RoutedEventArgs e)
     {
         var value = ModCatalogUrlText.Text.Trim();
@@ -1688,7 +1704,7 @@ public partial class MainWindow : Window
             StatusText.Text = $"{(enable ? "Enabling" : "Disabling")} {row.Name}…";
             await _modManager.SetEnabledAsync(row.Definition, enable, CancellationToken.None);
             await RefreshModsAsync();
-            StatusText.Text = $"{row.Name} {(enable ? "enabled" : "disabled")}. Backpack data was preserved.";
+            StatusText.Text = $"{row.Name} {(enable ? "enabled" : "disabled")}. Mod data was preserved.";
         }
         catch (Exception ex)
         {

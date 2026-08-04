@@ -44,6 +44,8 @@ if ($LASTEXITCODE -ne 0) { throw "Companion build failed with exit code $LASTEXI
 Step 'Building managed Companion mods'
 dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.Backpack\ScheduleICompanion.Backpack.csproj') -c Release
 if ($LASTEXITCODE -ne 0) { throw "Backpack build failed with exit code $LASTEXITCODE." }
+dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.ClonalCultivation\ScheduleICompanion.ClonalCultivation.csproj') -c Release
+if ($LASTEXITCODE -ne 0) { throw "Clonal Cultivation build failed with exit code $LASTEXITCODE." }
 
 Step 'Building the MelonLoader bridge'
 dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.Mod\ScheduleICompanion.Mod.csproj') -c Release
@@ -58,10 +60,12 @@ $ModDll = Join-Path $ProjectRoot 'ScheduleICompanion.Mod\bin\Release\net6.0\Sche
 $RuntimeDir = Join-Path $ProjectRoot 'ScheduleICompanion.Runtime\bin\Release\net6.0'
 $RuntimeDll = Join-Path $RuntimeDir 'ScheduleICompanion.Runtime.dll'
 $BackpackDll = Join-Path $ProjectRoot 'ScheduleICompanion.Backpack\bin\Release\net6.0\ScheduleICompanion.Backpack.dll'
+$ClonalCultivationDll = Join-Path $ProjectRoot 'ScheduleICompanion.ClonalCultivation\bin\Release\net6.0\ScheduleICompanion.ClonalCultivation.dll'
 Require-Path (Join-Path $PublishDir 'ScheduleICompanion.App.exe') 'Published companion executable'
 Require-Path $ModDll 'Built bridge DLL'
 Require-Path $RuntimeDll 'Built reloadable runtime DLL'
 Require-Path $BackpackDll 'Built backpack DLL'
+Require-Path $ClonalCultivationDll 'Built Clonal Cultivation DLL'
 
 Step 'Backing up the installed companion'
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
@@ -79,6 +83,7 @@ Get-ChildItem $AppDir -Force | Where-Object { $preserve -notcontains $_.Name } |
 Copy-Item (Join-Path $PublishDir '*') $AppDir -Recurse -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir 'ModPackages') | Out-Null
 Copy-Item $BackpackDll (Join-Path $AppDir 'ModPackages\ScheduleICompanion.Backpack.dll') -Force
+Copy-Item $ClonalCultivationDll (Join-Path $AppDir 'ModPackages\ScheduleICompanion.ClonalCultivation.dll') -Force
 if (-not (Test-Path (Join-Path $AppDir 'Maps'))) { New-Item -ItemType Directory -Path (Join-Path $AppDir 'Maps') | Out-Null }
 if (Test-Path (Join-Path $ProjectRoot 'ScheduleICompanion.App\Maps')) { Copy-Item (Join-Path $ProjectRoot 'ScheduleICompanion.App\Maps\*') (Join-Path $AppDir 'Maps') -Force -ErrorAction SilentlyContinue }
 
