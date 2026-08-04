@@ -11,6 +11,7 @@ public sealed class InstallationService
     public const string MelonLoaderUrl = "https://github.com/LavaGang/MelonLoader/releases/download/v0.7.3/MelonLoader.x64.zip";
     public const string MelonLoaderReleasesUrl = "https://github.com/LavaGang/MelonLoader/releases";
     private const string MelonLoaderSha256 = "5B2B2F3D1CD42B59EC886C5BDC2663EDAE87A0097A4F4A8F58C0965A99DDA416";
+    private const string SupportedGameAssemblySha512 = "92D015CA25C8E1E4EA4A351A936565CC5E41549BDE045D59C72CD45A7D7DD6BF4D2B66E9F05A8346E1AD2C2CF71876B108B3917F861D1B608595F7C3D5092745";
     private readonly string _payloadRoot;
     private readonly bool _manageProcesses;
 
@@ -59,6 +60,8 @@ public sealed class InstallationService
         }
         else progress.Report("MelonLoader is already installed; leaving it intact.");
 
+        InstallCompatibleInteropCache(gameDirectory, progress);
+
         cancellationToken.ThrowIfCancellationRequested();
         var companionDirectory = Path.Combine(gameDirectory, "ScheduleICompanion");
         var modsDirectory = Path.Combine(gameDirectory, "Mods");
@@ -82,7 +85,7 @@ public sealed class InstallationService
         var manifest = new
         {
             product = "Schedule I Companion",
-            version = "1.7.1",
+            version = "1.7.2",
             installedAt = DateTimeOffset.Now,
             melonLoader = IsMelonLoaderInstalled(gameDirectory) ? MelonLoaderVersion : null,
             gameDirectory
@@ -201,6 +204,29 @@ public sealed class InstallationService
         {
             try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, true); } catch { }
         }
+    }
+
+    private void InstallCompatibleInteropCache(string gameDirectory, IProgress<string> progress)
+    {
+        var sourceAssemblies = Path.Combine(_payloadRoot, "InteropCache", "Il2CppAssemblies");
+        var sourceConfig = Path.Combine(_payloadRoot, "InteropCache", "Config.cfg");
+        if (!Directory.Exists(sourceAssemblies) || !File.Exists(sourceConfig)) return;
+
+        var gameAssembly = Path.Combine(gameDirectory, "GameAssembly.dll");
+        if (!File.Exists(gameAssembly)) return;
+        using var stream = File.OpenRead(gameAssembly);
+        var actualHash = Convert.ToHexString(SHA512.HashData(stream));
+        if (!actualHash.Equals(SupportedGameAssemblySha512, StringComparison.OrdinalIgnoreCase))
+        {
+            progress.Report("The bundled IL2CPP cache does not match this game build; MelonLoader will generate its own.");
+            return;
+        }
+
+        progress.Report("Installing the verified IL2CPP cache for this Schedule I build...");
+        CopyDirectory(sourceAssemblies, Path.Combine(gameDirectory, "MelonLoader", "Il2CppAssemblies"));
+        var configTarget = Path.Combine(gameDirectory, "MelonLoader", "Dependencies", "Il2CppAssemblyGenerator", "Config.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(configTarget)!);
+        File.Copy(sourceConfig, configTarget, true);
     }
 
     private static void CopyDirectory(string source, string destination)

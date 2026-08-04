@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$Version = '1.7.1'
+$Version = '1.7.2'
 $DistRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot 'dist'))
 $PackageRoot = Join-Path $DistRoot "ScheduleICompanion-v$Version"
 $PayloadRoot = Join-Path $PackageRoot 'Payload'
@@ -18,6 +18,16 @@ New-Item -ItemType Directory -Force -Path $PayloadRoot | Out-Null
 Step 'Checking build requirements'
 Require-Path $GameDir 'Local Schedule I folder used for compile-time references'
 Require-Path (Join-Path $GameDir 'MelonLoader') 'MelonLoader compile-time references'
+
+Step 'Bundling the version-matched IL2CPP interop cache'
+$InteropSource = Join-Path $GameDir 'MelonLoader\Il2CppAssemblies'
+$InteropConfig = Join-Path $GameDir 'MelonLoader\Dependencies\Il2CppAssemblyGenerator\Config.cfg'
+Require-Path $InteropSource 'Generated IL2CPP assembly cache'
+Require-Path $InteropConfig 'IL2CPP assembly generator configuration'
+$InteropPayload = Join-Path $PayloadRoot 'InteropCache'
+New-Item -ItemType Directory -Force -Path $InteropPayload | Out-Null
+Copy-Item $InteropSource (Join-Path $InteropPayload 'Il2CppAssemblies') -Recurse -Force
+Copy-Item $InteropConfig (Join-Path $InteropPayload 'Config.cfg') -Force
 
 Step 'Building managed Companion mods'
 dotnet build (Join-Path $ProjectRoot 'ScheduleICompanion.Backpack\ScheduleICompanion.Backpack.csproj') -c Release

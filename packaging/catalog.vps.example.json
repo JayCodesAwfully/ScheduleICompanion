@@ -8,7 +8,7 @@
       "description": "Twelve private, per-career slots. Press B in-game. Local host verification covers compatible co-op players for the current session; no external server required.",
       "dllName": "ScheduleICompanion.Backpack.dll",
       "downloadUrl": "https://mods.example.com/schedule-i/ScheduleICompanion.Backpack-0.2.0.dll",
-      "sha256": "4F8142C3F6D625D069FA9343EB73407C04C9A71A3238C08FB67272DBD820E096",
+      "sha256": "571F86EB5D5F956A8C8811C3EFEA24509F0FC5E931EEC2F536FABAC7D82812A0",
       "experimental": true,
       "multiplayerPolicy": "host-and-owner-required"
     }
