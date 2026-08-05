@@ -15,6 +15,7 @@ internal sealed class CultivationMessage
     public ulong Recipient { get; set; }
     public string ProductId { get; set; } = "";
     public int Quality { get; set; }
+    public int InventorySlot { get; set; } = -1;
     public float PotX { get; set; }
     public float PotY { get; set; }
     public float PotZ { get; set; }

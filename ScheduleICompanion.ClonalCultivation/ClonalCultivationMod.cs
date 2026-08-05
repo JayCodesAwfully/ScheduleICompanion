@@ -26,6 +26,8 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly Dictionary<long, Pot> _trackedPots = new();
     private readonly HashSet<long> _configuredClonePots = new();
     private readonly HashSet<string> _registeredSeeds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<Guid> _processedPlantRequests = new();
+    private readonly HashSet<Guid> _completedPlantRequests = new();
     private MelonPreferences_Entry<string>? _plantKeyEntry;
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
     private KeyCode _plantKey = KeyCode.P;
@@ -217,6 +219,7 @@ public sealed class ClonalCultivationMod : MelonMod
                 RequestId = Guid.NewGuid(),
                 ProductId = definition.ID,
                 Quality = (int)weed.Quality,
+                InventorySlot = slotIndex,
                 PotX = pot.transform.position.x,
                 PotY = pot.transform.position.y,
                 PotZ = pot.transform.position.z
@@ -232,11 +235,11 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        PlantOnHost(LocalSteamId(), pot, player, definition, weed, Guid.NewGuid());
+        PlantOnHost(LocalSteamId(), pot, player, definition, weed, slotIndex, Guid.NewGuid());
     }
 
     private void PlantOnHost(ulong sender, Pot pot, Player player, WeedDefinition definition,
-        ProductItemInstance weed, Guid requestId)
+        ProductItemInstance weed, int slotIndex, Guid requestId)
     {
         var seedId = SeedId(definition.ID, (int)weed.Quality);
         EnsureCloneSeed(definition, weed.Quality);
@@ -252,7 +255,6 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        var slotIndex = player.EquippedItemSlotIndex;
         var held = slotIndex >= 0 && slotIndex < player._inventory.Length
             ? player._inventory[slotIndex].ItemInstance?.TryCast<ProductItemInstance>()
             : null;
@@ -272,7 +274,7 @@ public sealed class ClonalCultivationMod : MelonMod
             _trackedPots[potKey] = pot;
         }
         var quantityBefore = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
-        player.RemoveEquippedItemFromInventory(definition.ID, 1);
+        player._inventory[slotIndex].ChangeQuantity(-1, true);
         var quantityAfter = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
@@ -290,6 +292,7 @@ public sealed class ClonalCultivationMod : MelonMod
         if (message.Type == "result" && senderIsHost &&
             (message.Recipient == 0 || message.Recipient == LocalSteamId()))
         {
+            if (!_completedPlantRequests.Add(message.RequestId)) return;
             _status = message.Success ? "Host planted the bud" : "Planting rejected: " + message.Error;
             LoggerInstance.Msg(_status);
         }
@@ -297,13 +300,16 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private void ProcessHostPlantRequest(ulong sender, CultivationMessage request)
     {
+        if (!_processedPlantRequests.Add(request.RequestId)) return;
         var player = ResolvePlayer(sender);
         if (player is null)
         {
             SendPlantResult(sender, request.RequestId, false, "The host could not resolve your player");
             return;
         }
-        var equipped = player.GetEquippedItem()?.TryCast<ProductItemInstance>();
+        var equipped = request.InventorySlot >= 0 && request.InventorySlot < player._inventory.Length
+            ? player._inventory[request.InventorySlot].ItemInstance?.TryCast<ProductItemInstance>()
+            : null;
         var definition = equipped?.Definition?.TryCast<WeedDefinition>();
         if (equipped is null || definition is null ||
             !definition.ID.Equals(request.ProductId, StringComparison.OrdinalIgnoreCase) ||
@@ -323,11 +329,17 @@ public sealed class ClonalCultivationMod : MelonMod
             SendPlantResult(sender, request.RequestId, false, "The host could not match the targeted pot");
             return;
         }
-        PlantOnHost(sender, pot, player, definition, equipped, request.RequestId);
+        if (Vector3.SqrMagnitude(player.transform.position - pot.transform.position) > 36f)
+        {
+            SendPlantResult(sender, request.RequestId, false, "You are too far from the targeted pot");
+            return;
+        }
+        PlantOnHost(sender, pot, player, definition, equipped, request.InventorySlot, request.RequestId);
     }
 
     private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail)
     {
+        LoggerInstance.Msg($"Host planting {requestId} for Steam {recipient}: {(success ? "accepted" : "rejected - " + detail)}");
         if (recipient == LocalSteamId()) return;
         CultivationProtocol.Send(new CultivationMessage
         {
