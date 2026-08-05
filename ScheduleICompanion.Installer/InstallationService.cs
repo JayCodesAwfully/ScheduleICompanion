@@ -96,7 +96,7 @@ public sealed class InstallationService
         var manifest = new
         {
             product = "Schedule I Companion",
-            version = "1.7.16",
+            version = "1.7.17",
             installedAt = DateTimeOffset.Now,
             melonLoader = IsMelonLoaderInstalled(gameDirectory) ? MelonLoaderVersion : null,
             gameDirectory
