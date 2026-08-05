@@ -45,6 +45,147 @@
             </Setter>
         </Style>
 
+        <Style TargetType="ContextMenu">
+            <Setter Property="Foreground" Value="#E8F0EA"/>
+            <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#E8F0EA"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="MenuChrome" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1" CornerRadius="2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="MenuChrome" Property="Background" Value="#355141"/>
+                                <Setter TargetName="MenuChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="MenuChrome" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#E8F0EA"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="9,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#355141"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentDarkBrush}"/>
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#E8F0EA"/>
+            <Setter Property="Background" Value="#111713"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="MinHeight" Value="29"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="DropDownToggle" Focusable="False"
+                                          Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}"
+                                          ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ComboChrome" Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="28"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Path Grid.Column="1" Width="8" Height="5" Stretch="Fill"
+                                                      Fill="{StaticResource MutedBrush}" Data="M 0 0 L 4 4 L 8 0 Z"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                <Setter TargetName="ComboChrome" Property="Background" Value="#18231C"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="SelectionPresenter" Margin="9,1,31,1"
+                                              VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                            <TextBox x:Name="PART_EditableTextBox" Margin="7,2,31,2" Visibility="Hidden"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     Foreground="#E8F0EA" CaretBrush="{StaticResource AccentBrush}"
+                                     VerticalContentAlignment="Center"/>
+                            <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="300" Margin="0,2,0,0" Padding="3"
+                                        Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="3">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="SelectionPresenter" Property="Visibility" Value="Hidden"/>
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="TextBox">
             <Setter Property="Foreground" Value="#E8F0EA"/>
             <Setter Property="Background" Value="#111713"/>
@@ -555,15 +696,13 @@
                                 <TextBlock Text="Session" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
                                 <CheckBox x:Name="FreezeTimeCheck" Style="{StaticResource SwitchCheckBox}" Content="Freeze game clock" Click="FreezeTime_Click"/>
                                 <CheckBox x:Name="ShowFpsCheck" Style="{StaticResource SwitchCheckBox}" Content="Show in-game FPS" Click="ShowFps_Click" Margin="0,8,0,0"/>
+                                <CheckBox x:Name="InstantGrowCheck" Style="{StaticResource SwitchCheckBox}"
+                                          Content="Instant Grow testing (aim at a plant and press Insert)"
+                                          Click="InstantGrow_Click" Margin="0,8,0,0"/>
                                 <WrapPanel Margin="0,8,0,0">
                                     <TextBlock Text="Time (HHMM)" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
                                     <TextBox x:Name="SetTimeText" Width="64" Margin="8,0,5,0" Text="1200"/>
                                     <Button Content="Set time" Click="SetTime_Click"/>
-                                    <TextBlock Text="Weather" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                                    <ComboBox x:Name="WeatherCombo" Width="105" Margin="8,0,5,0" IsEditable="True" Text="clear">
-                                        <ComboBoxItem Content="clear"/>
-                                    </ComboBox>
-                                    <Button Content="Apply" Click="SetWeather_Click"/>
                                 </WrapPanel>
 
                                 <Separator Margin="0,12,0,10"/>
@@ -601,7 +740,17 @@
                                 <TextBlock Text="World and movement" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
                                 <WrapPanel Margin="0,7,0,0">
                                     <Button Content="Clear trash now" Click="ClearTrash_Click"/>
-                                    <Button Content="Set clear weather" Click="ClearWeather_Click" Margin="6,0,0,0"/>
+                                    <Button x:Name="SetWeatherButton" Content="Set Weather ▾" Click="SetWeatherMenu_Click" Margin="6,0,0,0">
+                                        <Button.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Clear" Tag="clear" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Rain" Tag="rain" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Storm" Tag="storm" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Fog" Tag="fog" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Snow" Tag="snow" Click="WeatherType_Click"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
                                     <Button Content="Toggle free camera" Click="ToggleFreeCam_Click" Margin="6,0,0,0"/>
                                 </WrapPanel>
                                 <WrapPanel Margin="0,7,0,0">

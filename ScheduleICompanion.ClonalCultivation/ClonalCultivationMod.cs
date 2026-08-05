@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Runtime.InteropServices;
 using System.Text;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -38,7 +37,6 @@ public sealed class ClonalCultivationMod : MelonMod
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
     private KeyCode _plantKey = KeyCode.P;
     private bool _plantKeyHeld;
-    private bool _f8Held;
     private string _notice = "";
     private float _noticeUntil;
     private bool _registryStateLogged;
@@ -87,22 +85,22 @@ public sealed class ClonalCultivationMod : MelonMod
             LoggerInstance.Msg($"Plant key {_plantKey} detected.");
             TryPlantEquippedBud();
         }
-        var f8DownNow = Input.GetKey(KeyCode.F8) || (GetAsyncKeyState(0x77) & 0x8000) != 0;
-        var f8Pressed = Input.GetKeyDown(KeyCode.F8) || (f8DownNow && !_f8Held);
-        _f8Held = f8DownNow;
-        if (f8Pressed && _instantGrowEntry is not null)
-        {
-            _instantGrowEntry.Value = !_instantGrowEntry.Value;
-            MelonPreferences.Save();
-            _status = $"Instant Grow testing {(_instantGrowEntry.Value ? "enabled" : "disabled")}";
-            LoggerInstance.Msg($"{_status}. Press Insert while looking at a plant to activate it.");
-            ShowNotice(_status + (_instantGrowEntry.Value ? " - aim at a plant and press Insert" : ""));
-        }
         if (Input.GetKeyDown(KeyCode.Insert))
         {
             if (_instantGrowEntry?.Value == true) TryInstantGrow();
-            else ShowNotice("Instant Grow is disabled - press F8 to enable it");
+            else ShowNotice("Instant Grow is disabled - enable it in Companion Settings > DevTools");
         }
+    }
+
+    public static bool SetInstantGrowTesting(bool enabled)
+    {
+        if (Active?._instantGrowEntry is null) return false;
+        Active._instantGrowEntry.Value = enabled;
+        MelonPreferences.Save();
+        Active._status = $"Instant Grow testing {(enabled ? "enabled" : "disabled")}";
+        Active.ShowNotice(Active._status + (enabled ? " - aim at a plant and press Insert" : ""));
+        Active.LoggerInstance.Msg(Active._status + ".");
+        return true;
     }
 
     public override void OnGUI()
@@ -121,9 +119,6 @@ public sealed class ClonalCultivationMod : MelonMod
         _notice = message;
         _noticeUntil = Time.unscaledTime + 4f;
     }
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int virtualKey);
 
     private void ParsePlantKey()
     {

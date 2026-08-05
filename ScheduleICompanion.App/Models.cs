@@ -76,6 +76,7 @@ public sealed class CompanionSettings
     public bool AutoClearTrash { get; set; }
     public int TrashClearIntervalSeconds { get; set; } = 30;
     public bool ShowFps { get; set; }
+    public bool InstantGrowTesting { get; set; }
     public string ModCatalogUrl { get; set; } = "";
 }
 

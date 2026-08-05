@@ -1077,6 +1077,8 @@ public partial class MainWindow : Window
         {
             _settings = new();
         }
+        if (_modManager.GetCultivationInstantGrow())
+            _settings.InstantGrowTesting = true;
 
         Topmost = _settings.AlwaysOnTop;
         AlwaysOnTopCheck.IsChecked = _settings.AlwaysOnTop;
@@ -1108,6 +1110,7 @@ public partial class MainWindow : Window
         AutoClearTrashCheck.IsChecked = _settings.AutoClearTrash;
         TrashIntervalText.Text = Math.Clamp(_settings.TrashClearIntervalSeconds, 5, 60).ToString();
         ShowFpsCheck.IsChecked = _settings.ShowFps;
+        InstantGrowCheck.IsChecked = _settings.InstantGrowTesting;
         ModCatalogUrlText.Text = _settings.ModCatalogUrl;
         ApplyDashboardVisibility();
         UpdateClockDisplay();
@@ -1218,6 +1221,8 @@ public partial class MainWindow : Window
             _settings.DevToolsEnabled && _settings.AutoClearTrash, _settings.TrashClearIntervalSeconds));
         _pipe.Send("devtool", new DevToolCommandPayload("show_fps",
             _settings.DevToolsEnabled && _settings.ShowFps));
+        _pipe.Send("devtool", new DevToolCommandPayload("instant_grow",
+            _settings.DevToolsEnabled && _settings.InstantGrowTesting));
     }
 
     private void MoveToSecondMonitor()
@@ -1291,9 +1296,11 @@ public partial class MainWindow : Window
             FreezeTimeCheck.IsChecked = false;
             AutoClearTrashCheck.IsChecked = false;
             ShowFpsCheck.IsChecked = false;
+            InstantGrowCheck.IsChecked = false;
             _settings.FreezeGameTime = false;
             _settings.AutoClearTrash = false;
             _settings.ShowFps = false;
+            _settings.InstantGrowTesting = false;
         }
         PersistSettings();
         SendDevToolState();
@@ -1315,23 +1322,50 @@ public partial class MainWindow : Window
         _pipe.Send("devtool", new DevToolCommandPayload("show_fps", _settings.ShowFps));
     }
 
+    private void InstantGrow_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_settings.DevToolsEnabled) return;
+        _settings.InstantGrowTesting = InstantGrowCheck.IsChecked == true;
+        PersistSettings();
+        if (_pipe.Send("devtool", new DevToolCommandPayload("instant_grow", _settings.InstantGrowTesting)))
+        {
+            StatusText.Text = _settings.InstantGrowTesting
+                ? "Instant Grow enabled; aim at a plant and press Insert."
+                : "Instant Grow disabled.";
+            return;
+        }
+        try
+        {
+            _modManager.SetCultivationInstantGrow(_settings.InstantGrowTesting);
+            StatusText.Text = "Instant Grow saved for the next game launch.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+        }
+    }
+
     private void ClearTrash_Click(object sender, RoutedEventArgs e)
     {
         if (_settings.DevToolsEnabled)
             _pipe.Send("devtool", new DevToolCommandPayload("clear_trash"));
     }
 
-    private void ClearWeather_Click(object sender, RoutedEventArgs e)
+    private void SetWeatherMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (_settings.DevToolsEnabled)
-            _pipe.Send("devtool", new DevToolCommandPayload("clear_weather"));
+        if (SetWeatherButton.ContextMenu is null) return;
+        SetWeatherButton.ContextMenu.PlacementTarget = SetWeatherButton;
+        SetWeatherButton.ContextMenu.IsOpen = true;
+    }
+
+    private void WeatherType_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.MenuItem { Tag: string weather }) return;
+        SendDebugAction(DebugAction("set_weather", weather), $"Setting weather to {weather}");
     }
 
     private void SetTime_Click(object sender, RoutedEventArgs e) =>
         SendDebugAction(DebugAction("set_time", SetTimeText.Text), "Set-time command sent");
-
-    private void SetWeather_Click(object sender, RoutedEventArgs e) =>
-        SendDebugAction(DebugAction("set_weather", WeatherCombo.Text), "Weather command sent");
 
     private void OpenDealer_Click(object sender, RoutedEventArgs e)
     {

@@ -266,6 +266,9 @@ public sealed class GameProbe
                 case "show_fps":
                     SubmitConsoleCommand(command.Enabled ? "showfps" : "hidefps", "FPS display");
                     break;
+                case "instant_grow":
+                    SetCultivationInstantGrow(command.Enabled);
+                    break;
                 case "clear_weather":
                     SubmitConsoleCommand("setweather clear", "Clear weather");
                     break;
@@ -495,6 +498,20 @@ public sealed class GameProbe
         Report("DevTools", $"Opened {kind} interaction {name}.");
     }
 
+    private void SetCultivationInstantGrow(bool enabled)
+    {
+        var cultivationType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("ScheduleICompanion.ClonalCultivation.ClonalCultivationMod", false))
+            .FirstOrDefault(type => type is not null)
+            ?? throw new InvalidOperationException("Cultivation is not loaded.");
+        var method = cultivationType.GetMethod("SetInstantGrowTesting",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            ?? throw new InvalidOperationException("The installed Cultivation version does not support live Instant Grow changes.");
+        if (method.Invoke(null, new object[] { enabled }) is not true)
+            throw new InvalidOperationException("Cultivation is still initializing.");
+        Report("DevTools", enabled ? "Instant Grow enabled." : "Instant Grow disabled.");
+    }
+
     private void PublishDebugCatalog()
     {
         try
@@ -504,16 +521,16 @@ public sealed class GameProbe
                 .Select(item => $"Shop · {item.gameObject.name ?? item.name ?? "Shop"}")
                 .Concat(Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.Money.ATM>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"ATM · {item.gameObject.name ?? item.name ?? "ATM"}"))
+                    .Select(item => $"ATM · {item.gameObject.name ?? item.name ?? "ATM"}").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<PayPhone>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Payphone · {item.gameObject.name ?? item.name ?? "Payphone"}"))
+                    .Select(item => $"Payphone · {item.gameObject.name ?? item.name ?? "Payphone"}").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<VendingMachine>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Vending · {item.gameObject.name ?? item.name ?? "Vending machine"}"))
+                    .Select(item => $"Vending · {item.gameObject.name ?? item.name ?? "Vending machine"}").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<JukeboxInterface>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Jukebox · {item.gameObject.name ?? item.name ?? "Jukebox"}"))
+                    .Select(item => $"Jukebox · {item.gameObject.name ?? item.name ?? "Jukebox"}").Take(1))
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
