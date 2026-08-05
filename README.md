@@ -18,7 +18,7 @@ built-in console command system.
 
 ## Shareable install
 
-Extract `dist\ScheduleICompanion-v1.7.7.zip`, keep its `Payload` folder beside
+Extract `dist\ScheduleICompanion-v1.7.8.zip`, keep its `Payload` folder beside
 `ScheduleICompanion-Setup.exe`, and run the setup application. It detects Steam libraries,
 can install the official pinned MelonLoader v0.7.3 x64 build, verifies that download before
 extracting it, installs the self-contained Companion, creates backups, and supports repair or
@@ -33,7 +33,7 @@ The **Mods** tab installs and removes SHA-256 verified mod DLLs while preserving
 data. It uses the bundled catalogue by default, or an optional HTTPS catalogue hosted on your
 own VPS. Close Schedule I before changing enabled mods.
 
-The first managed mod is **Reliable Personal Backpack 0.2.0**. It provides twelve private
+The first managed mod is **Backpack 0.2.1**. It provides twelve private
 slots, opens with `B`, transfers whole stacks, and uses host-authorised revisioned transactions
 in multiplayer. The host verifies the local session and compatible co-op players inherit that
 verification for that session; no external server is required. Both the host and each backpack

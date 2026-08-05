@@ -14,6 +14,7 @@
     <Reference Include="Assembly-CSharp"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2CppScheduleOne.Core"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2CppScheduleOne.Core.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2CppFishNet.Runtime"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2CppFishNet.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppSteamworks"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppcom.rlabrecque.steamworks.net.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>

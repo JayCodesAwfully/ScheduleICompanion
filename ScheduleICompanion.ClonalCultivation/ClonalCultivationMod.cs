@@ -2,12 +2,15 @@ using System.Security.Cryptography;
 using System.Text;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes;
+using Il2CppFishySteamworks;
 using Il2CppScheduleOne;
 using Il2CppScheduleOne.Growing;
 using Il2CppScheduleOne.ItemFramework;
+using Il2CppScheduleOne.Networking;
 using Il2CppScheduleOne.ObjectScripts;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Product;
+using Il2CppSteamworks;
 using MelonLoader;
 using UnityEngine;
 
@@ -31,7 +34,6 @@ public sealed class ClonalCultivationMod : MelonMod
     private float _nextRegistryRefresh;
     private float _nextTraitUpdate;
     private const float CloneGrowthTimeMultiplier = 1.3f;
-    private const float CloneYieldMultiplier = 0.8f;
     private string _status = "Hold a created weed bud, look at an empty pot, and press P";
 
     public override void OnInitializeMelon()
@@ -45,9 +47,12 @@ public sealed class ClonalCultivationMod : MelonMod
             _plantKeyEntry.Value = "P";
         _instantGrowEntry = preferences.CreateEntry("InstantGrowTesting", false, "Allow Insert to finish the targeted plant");
         ParsePlantKey();
+        CultivationProtocol.Received += OnProtocolMessage;
         HarmonyInstance.PatchAll(typeof(ClonalCultivationMod).Assembly);
         LoggerInstance.Msg($"Cultivation initialized. Hold a created weed bud, look at an empty pot, and press {_plantKey}.");
     }
+
+    public override void OnDeinitializeMelon() => CultivationProtocol.Received -= OnProtocolMessage;
 
     public override void OnUpdate()
     {
@@ -204,6 +209,61 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
+        if (IsMultiplayerClient())
+        {
+            var request = new CultivationMessage
+            {
+                Type = "plant",
+                RequestId = Guid.NewGuid(),
+                ProductId = definition.ID,
+                Quality = (int)weed.Quality,
+                PotX = pot.transform.position.x,
+                PotY = pot.transform.position.y,
+                PotZ = pot.transform.position.z
+            };
+            if (!CultivationProtocol.Send(request))
+            {
+                _status = "Unable to contact the host for planting";
+                LoggerInstance.Warning(_status);
+                return;
+            }
+            _status = "Waiting for host planting confirmation";
+            LoggerInstance.Msg($"Sent host planting request {request.RequestId} for {definition.Name} ({weed.Quality}).");
+            return;
+        }
+
+        PlantOnHost(LocalSteamId(), pot, player, definition, weed, Guid.NewGuid());
+    }
+
+    private void PlantOnHost(ulong sender, Pot pot, Player player, WeedDefinition definition,
+        ProductItemInstance weed, Guid requestId)
+    {
+        var seedId = SeedId(definition.ID, (int)weed.Quality);
+        EnsureCloneSeed(definition, weed.Quality);
+        if (!_productsBySeed.ContainsKey(seedId) || !Registry.ItemExists(seedId))
+        {
+            SendPlantResult(sender, requestId, false, "The host could not register that strain and quality");
+            return;
+        }
+        if (!pot.CanAcceptSeed(out var reason))
+        {
+            SendPlantResult(sender, requestId, false,
+                string.IsNullOrWhiteSpace(reason) ? "That pot cannot accept a plant" : reason);
+            return;
+        }
+
+        var slotIndex = player.EquippedItemSlotIndex;
+        var held = slotIndex >= 0 && slotIndex < player._inventory.Length
+            ? player._inventory[slotIndex].ItemInstance?.TryCast<ProductItemInstance>()
+            : null;
+        var heldDefinition = held?.Definition?.TryCast<WeedDefinition>();
+        if (held is null || heldDefinition is null ||
+            !heldDefinition.ID.Equals(definition.ID, StringComparison.OrdinalIgnoreCase) || held.Quality != weed.Quality)
+        {
+            SendPlantResult(sender, requestId, false, "The host could not verify the held bud");
+            return;
+        }
+
         pot.PlantSeed_Server(seedId, 0f);
         if (_qualityBySeed.TryGetValue(seedId, out var plantedTemplate))
         {
@@ -216,6 +276,67 @@ public sealed class ClonalCultivationMod : MelonMod
         var quantityAfter = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
+        SendPlantResult(sender, requestId, true, _status);
+    }
+
+    private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
+    {
+        if (message.Protocol != "1") return;
+        if (message.Type == "plant" && IsHost())
+        {
+            ProcessHostPlantRequest(sender, message);
+            return;
+        }
+        if (message.Type == "result" && senderIsHost &&
+            (message.Recipient == 0 || message.Recipient == LocalSteamId()))
+        {
+            _status = message.Success ? "Host planted the bud" : "Planting rejected: " + message.Error;
+            LoggerInstance.Msg(_status);
+        }
+    }
+
+    private void ProcessHostPlantRequest(ulong sender, CultivationMessage request)
+    {
+        var player = ResolvePlayer(sender);
+        if (player is null)
+        {
+            SendPlantResult(sender, request.RequestId, false, "The host could not resolve your player");
+            return;
+        }
+        var equipped = player.GetEquippedItem()?.TryCast<ProductItemInstance>();
+        var definition = equipped?.Definition?.TryCast<WeedDefinition>();
+        if (equipped is null || definition is null ||
+            !definition.ID.Equals(request.ProductId, StringComparison.OrdinalIgnoreCase) ||
+            (int)equipped.Quality != request.Quality)
+        {
+            SendPlantResult(sender, request.RequestId, false, "The host could not verify your equipped bud");
+            return;
+        }
+
+        var requestedPosition = new Vector3(request.PotX, request.PotY, request.PotZ);
+        var pot = UnityEngine.Object.FindObjectsOfType<Pot>()
+            .Where(candidate => candidate is not null && candidate.CanAcceptSeed(out _))
+            .OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - requestedPosition))
+            .FirstOrDefault();
+        if (pot is null || Vector3.SqrMagnitude(pot.transform.position - requestedPosition) > 2.25f)
+        {
+            SendPlantResult(sender, request.RequestId, false, "The host could not match the targeted pot");
+            return;
+        }
+        PlantOnHost(sender, pot, player, definition, equipped, request.RequestId);
+    }
+
+    private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail)
+    {
+        if (recipient == LocalSteamId()) return;
+        CultivationProtocol.Send(new CultivationMessage
+        {
+            Type = "result",
+            RequestId = requestId,
+            Recipient = recipient,
+            Success = success,
+            Error = success ? "" : detail
+        });
     }
 
     private static Pot? ResolveTargetPot(RaycastHit hit)
@@ -290,9 +411,8 @@ public sealed class ClonalCultivationMod : MelonMod
                 var originalGrowthTime = plant.GrowthTime;
                 plant.GrowthTime = Mathf.CeilToInt(originalGrowthTime * CloneGrowthTimeMultiplier);
                 _configuredClonePots.Add(entry.Key);
-                LoggerInstance.Msg($"Clone plant configured: growth time {originalGrowthTime} -> {plant.GrowthTime}; yield capped at 80%.");
+                LoggerInstance.Msg($"Clone plant configured: growth time {originalGrowthTime} -> {plant.GrowthTime}; native yield preserved.");
             }
-            plant._YieldMultiplier_k__BackingField = Math.Min(plant.YieldMultiplier, CloneYieldMultiplier);
         }
     }
 
@@ -352,6 +472,38 @@ public sealed class ClonalCultivationMod : MelonMod
         }
         LoggerInstance.Warning($"Harvest hook found {product.Name}, but its planted quality was unavailable.");
         return product.GetDefaultInstance(quantity);
+    }
+
+    private static Player? ResolvePlayer(ulong steamId)
+    {
+        if (steamId == LocalSteamId()) return Player.Local;
+        var transport = UnityEngine.Object.FindObjectOfType<FishySteamworks>();
+        if (transport is null) return null;
+        foreach (var player in Player.PlayerList)
+        {
+            if (player?.Connection is null) continue;
+            var address = transport.GetConnectionAddress(player.Connection.ClientId);
+            if (address?.Contains(steamId.ToString(), StringComparison.Ordinal) == true) return player;
+        }
+        return null;
+    }
+
+    private static ulong LocalSteamId()
+    {
+        try { return SteamUser.GetSteamID().m_SteamID; }
+        catch { return 0; }
+    }
+
+    private static bool IsHost()
+    {
+        try { return Lobby.Instance is null || !Lobby.Instance.IsInLobby || Lobby.Instance.IsHost; }
+        catch { return true; }
+    }
+
+    private static bool IsMultiplayerClient()
+    {
+        try { return Lobby.Instance is not null && Lobby.Instance.IsInLobby && !Lobby.Instance.IsHost; }
+        catch { return false; }
     }
 
     [HarmonyPatch(typeof(WeedPlant), "GetHarvestedProduct")]
