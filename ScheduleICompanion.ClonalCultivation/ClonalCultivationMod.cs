@@ -38,6 +38,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private float _nextRegistryRefresh;
     private float _nextTraitUpdate;
     private float _nextHostGrowthSync;
+    private float _nextCloneIdentitySync;
     private const float CloneGrowthTimeMultiplier = 1.3f;
     private string _status = "Hold a created weed bud, look at an empty pot, and press P";
 
@@ -63,6 +64,7 @@ public sealed class ClonalCultivationMod : MelonMod
     {
         UpdateClonePlantTraits();
         RetryPendingPlantResults();
+        BroadcastCloneIdentities();
         if (_plantKeyEntry is not null && !_plantKeyEntry.Value.Equals(_plantKey.ToString(), StringComparison.OrdinalIgnoreCase))
             ParsePlantKey();
         if (Time.unscaledTime >= _nextRegistryRefresh)
@@ -279,16 +281,14 @@ public sealed class ClonalCultivationMod : MelonMod
             _trackedPots[potKey] = pot;
         }
         var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
-        var quantityAfter = quantityBefore;
-        if (sender == LocalSteamId())
-        {
-            ConsumeOneFromSlot(player._inventory[hostSlotIndex]);
-            quantityAfter = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
-        }
+        // Use the game's server-issued observer RPC for both host and remote owners.
+        // This is the same authoritative path used when the equipped item is consumed
+        // normally and correctly removes the final ItemInstance from every peer.
+        player.RemoveEquippedItemFromInventory(definition.ID, 1);
+        var quantityAfter = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
-        SendPlantResult(sender, requestId, true, _status, clientSlotIndex, definition.ID, (int)weed.Quality,
-            sender != LocalSteamId());
+        SendPlantResult(sender, requestId, true, _status, clientSlotIndex, definition.ID, (int)weed.Quality, false);
     }
 
     private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
@@ -303,6 +303,11 @@ public sealed class ClonalCultivationMod : MelonMod
         {
             if (_pendingPlantResults.TryGetValue(message.RequestId, out var pending) && pending.Recipient == sender)
                 _pendingPlantResults.Remove(message.RequestId);
+            return;
+        }
+        if (message.Type == "clone-sync" && senderIsHost)
+        {
+            ApplyCloneIdentity(message);
             return;
         }
         if (message.Type == "result" && senderIsHost &&
@@ -461,6 +466,62 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private sealed record PendingPlantResult(
         ulong Recipient, CultivationMessage Message, float NextRetry, int Attempts);
+
+    private void BroadcastCloneIdentities()
+    {
+        if (!IsHost() || Time.unscaledTime < _nextCloneIdentitySync) return;
+        _nextCloneIdentitySync = Time.unscaledTime + 2f;
+        foreach (var entry in _cloneByPot)
+        {
+            if (!_trackedPots.TryGetValue(entry.Key, out var pot) || pot?.Plant is null) continue;
+            CultivationProtocol.Send(new CultivationMessage
+            {
+                Type = "clone-sync",
+                ProductId = entry.Value.Product.ID,
+                Quality = (int)entry.Value.Template.Quality,
+                PotX = pot.transform.position.x,
+                PotY = pot.transform.position.y,
+                PotZ = pot.transform.position.z
+            });
+        }
+    }
+
+    private void ApplyCloneIdentity(CultivationMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.ProductId)) return;
+        var manager = UnityEngine.Object.FindObjectOfType<ProductManager>();
+        WeedDefinition? product = null;
+        if (manager?.createdProducts is not null)
+        {
+            foreach (var candidate in manager.createdProducts)
+            {
+                if (candidate is not WeedDefinition weed ||
+                    !weed.ID.Equals(message.ProductId, StringComparison.OrdinalIgnoreCase)) continue;
+                product = weed;
+                break;
+            }
+        }
+        if (product is null)
+        {
+            LoggerInstance.Warning($"Clone sync is waiting for custom product {message.ProductId} to register.");
+            return;
+        }
+        var quality = (EQuality)message.Quality;
+        EnsureCloneSeed(product, quality);
+        var seedId = SeedId(product.ID, message.Quality);
+        if (!_qualityBySeed.TryGetValue(seedId, out var template)) return;
+        var position = new Vector3(message.PotX, message.PotY, message.PotZ);
+        var pot = UnityEngine.Object.FindObjectsOfType<Pot>()
+            .Where(candidate => candidate?.Plant is not null)
+            .OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - position))
+            .FirstOrDefault();
+        if (pot is null || Vector3.SqrMagnitude(pot.transform.position - position) > 0.25f) return;
+        var potKey = pot.Pointer.ToInt64();
+        _productsBySeed[seedId] = product;
+        _qualityBySeed[seedId] = template;
+        _cloneByPot[potKey] = (product, template);
+        _trackedPots[potKey] = pot;
+    }
 
     private static Pot? ResolveTargetPot(RaycastHit hit)
     {
