@@ -84,6 +84,8 @@ public sealed class GameProbe
     private float _nextContractFallbackScan;
     private float _nextNetWorthRefresh;
     private float _nextDebugCatalogPublish;
+    private float _nextNpcMarkerPublish;
+    private float _nextMixRecommendationRefresh;
     private int _detailPhase;
     private ActiveOrderDetailPayload[] _operationOrders = Array.Empty<ActiveOrderDetailPayload>();
     private ProductStockPayload[] _operationStock = Array.Empty<ProductStockPayload>();
@@ -95,6 +97,7 @@ public sealed class GameProbe
     private OperationItemPayload[] _operationDeliveries = Array.Empty<OperationItemPayload>();
     private OperationItemPayload[] _operationEmployees = Array.Empty<OperationItemPayload>();
     private OperationItemPayload[] _operationLaundering = Array.Empty<OperationItemPayload>();
+    private MixRecommendationPayload[] _operationMixRecommendations = Array.Empty<MixRecommendationPayload>();
     private string _operationRisk = "Waiting for local player";
     private bool _freezeGameTime;
     private float _timeSpeedBeforeFreeze = 1f;
@@ -152,11 +155,13 @@ public sealed class GameProbe
         var now = Time.unscaledTime;
         _nextSupplementalPublish = now;
         _nextDetailPhase = now + 0.5f;
-        _nextPotentialCustomerRefresh = now + 1f;
+        _nextPotentialCustomerRefresh = now + 2f;
         _nextNpcHierarchyDiscovery = now + 2f;
         _nextContractFallbackScan = now + 5f;
         _nextNetWorthRefresh = now + 3f;
         _nextDebugCatalogPublish = now + 2f;
+        _nextNpcMarkerPublish = now;
+        _nextMixRecommendationRefresh = now;
         _detailPhase = 0;
         _operationOrders = Array.Empty<ActiveOrderDetailPayload>();
         _operationStock = Array.Empty<ProductStockPayload>();
@@ -168,6 +173,7 @@ public sealed class GameProbe
         _operationDeliveries = Array.Empty<OperationItemPayload>();
         _operationEmployees = Array.Empty<OperationItemPayload>();
         _operationLaundering = Array.Empty<OperationItemPayload>();
+        _operationMixRecommendations = Array.Empty<MixRecommendationPayload>();
         _operationRisk = "Waiting for local player";
         _lastDebugCatalogSummary = "";
         _nextTrashClear = 0;
@@ -179,14 +185,14 @@ public sealed class GameProbe
     {
         if (now >= _nextTargetedPlayerDiscovery)
         {
-            _nextTargetedPlayerDiscovery = now + 2f;
+            _nextTargetedPlayerDiscovery = now + 5f;
             DiscoverTargetedPlayers();
             ResolveNativeMapServices();
         }
 
         if (now >= _nextPotentialCustomerRefresh)
         {
-            _nextPotentialCustomerRefresh = now + 2f;
+            _nextPotentialCustomerRefresh = now + 5f;
             TrackPotentialCustomers();
         }
 
@@ -197,7 +203,7 @@ public sealed class GameProbe
             _nextNpcHierarchyDiscovery = now + 30f;
             StartNpcHierarchyDiscovery();
         }
-        ProcessNpcHierarchySlice(96, 8000);
+        ProcessNpcHierarchySlice(24, 8000);
 
         if (now >= _nextSupplementalPublish)
         {
@@ -207,7 +213,7 @@ public sealed class GameProbe
 
         if (now >= _nextDebugCatalogPublish)
         {
-            _nextDebugCatalogPublish = now + 5f;
+            _nextDebugCatalogPublish = now + 60f;
             PublishDebugCatalog();
         }
 
@@ -215,7 +221,7 @@ public sealed class GameProbe
         // all land in the same Unity frame.
         if (now >= _nextDetailPhase)
         {
-            _nextDetailPhase = now + 0.5f;
+            _nextDetailPhase = now + 1f;
             PublishNextDetailPhase(now);
         }
 
@@ -476,6 +482,19 @@ public sealed class GameProbe
             return;
         }
 
+        if (kind.Equals("Laundering", StringComparison.OrdinalIgnoreCase))
+        {
+            var laundering = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
+                .FirstOrDefault(item => item is not null && item.gameObject.scene.IsValid() &&
+                    ((item.Business?.PropertyName ?? "").Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                     (item.gameObject.name ?? item.name ?? "").Equals(name, StringComparison.OrdinalIgnoreCase)));
+            if (laundering is null)
+                throw new InvalidOperationException($"Laundering interface '{name}' is not loaded.");
+            laundering.Open();
+            Report("DevTools", $"Opened laundering interface {name}.");
+            return;
+        }
+
         throw new InvalidOperationException($"Interface type '{kind}' is not supported yet.");
     }
 
@@ -531,6 +550,9 @@ public sealed class GameProbe
                 .Concat(Resources.FindObjectsOfTypeAll<JukeboxInterface>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
                     .Select(item => $"Jukebox · {item.gameObject.name ?? item.name ?? "Jukebox"}").Take(1))
+                .Concat(Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
+                    .Where(item => item is not null && item.gameObject.scene.IsValid())
+                    .Select(item => $"Laundering · {item.Business?.PropertyName ?? item.gameObject.name ?? item.name ?? "Business"}"))
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
@@ -959,6 +981,11 @@ public sealed class GameProbe
 
     private void PublishOperationsSnapshot()
     {
+        if (Time.unscaledTime >= _nextMixRecommendationRefresh)
+        {
+            _nextMixRecommendationRefresh = Time.unscaledTime + 15f;
+            _operationMixRecommendations = BuildMixRecommendations();
+        }
         _server.Publish(new BridgeMessage
         {
             Type = "operations_snapshot",
@@ -967,7 +994,7 @@ public sealed class GameProbe
                 _operationCash, _operationOnlineBalance, _operationNetWorth,
                 _operationProduction, _operationDealers, _operationDeliveries,
                 _operationEmployees, _operationLaundering, _operationRisk,
-                BuildMixRecommendations())
+                _operationMixRecommendations)
         });
     }
 
@@ -1285,6 +1312,10 @@ public sealed class GameProbe
                 });
             }
             _server.Publish(new BridgeMessage { Type = "player_markers", Payload = new PlayerMarkersSnapshotPayload(markers) });
+
+            var now = Time.unscaledTime;
+            if (now < _nextNpcMarkerPublish) return;
+            _nextNpcMarkerPublish = now + 1f;
 
             var npcMarkers = new List<NpcMarkerPayload>();
             foreach (var pair in _trackedNpcs.ToArray())

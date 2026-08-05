@@ -19,6 +19,7 @@
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.JSONSerializeModule"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.JSONSerializeModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2Cppmscorlib" Condition="Exists('$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll')"><HintPath>$(ScheduleIGameDirectory)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 </Project>

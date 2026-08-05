@@ -8,6 +8,7 @@ using Il2CppScheduleOne.Growing;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Networking;
 using Il2CppScheduleOne.ObjectScripts;
+using Il2CppScheduleOne.Persistence.Datas;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Product;
 using Il2CppSteamworks;
@@ -74,7 +75,7 @@ public sealed class ClonalCultivationMod : MelonMod
             ParsePlantKey();
         if (Time.unscaledTime >= _nextRegistryRefresh)
         {
-            _nextRegistryRefresh = Time.unscaledTime + 8f;
+            _nextRegistryRefresh = Time.unscaledTime + 30f;
             EnsureCloneSeeds();
         }
         var plantKeyDown = Input.GetKeyDown(_plantKey) || (Input.GetKey(_plantKey) && !_plantKeyHeld);
@@ -264,6 +265,7 @@ public sealed class ClonalCultivationMod : MelonMod
                 Type = "plant",
                 RequestId = Guid.NewGuid(),
                 ProductId = definition.ID,
+                ProductDataJson = JsonUtility.ToJson(definition.GetSaveData()),
                 Quality = (int)weed.Quality,
                 InventorySlot = slotIndex,
                 PotX = pot.transform.position.x,
@@ -302,15 +304,18 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        var held = hostSlotIndex >= 0 && hostSlotIndex < player._inventory.Length
-            ? player._inventory[hostSlotIndex].ItemInstance?.TryCast<ProductItemInstance>()
-            : null;
-        var heldDefinition = held?.Definition?.TryCast<WeedDefinition>();
-        if (held is null || heldDefinition is null ||
-            !heldDefinition.ID.Equals(definition.ID, StringComparison.OrdinalIgnoreCase) || held.Quality != weed.Quality)
+        if (sender == LocalSteamId())
         {
-            SendPlantResult(sender, requestId, false, "The host could not verify the held bud");
-            return;
+            var held = hostSlotIndex >= 0 && hostSlotIndex < player._inventory.Length
+                ? player._inventory[hostSlotIndex].ItemInstance?.TryCast<ProductItemInstance>()
+                : null;
+            var heldDefinition = held?.Definition?.TryCast<WeedDefinition>();
+            if (held is null || heldDefinition is null ||
+                !heldDefinition.ID.Equals(definition.ID, StringComparison.OrdinalIgnoreCase) || held.Quality != weed.Quality)
+            {
+                SendPlantResult(sender, requestId, false, "The host could not verify the held bud");
+                return;
+            }
         }
 
         pot.PlantSeed_Server(seedId, 0f);
@@ -407,8 +412,24 @@ public sealed class ClonalCultivationMod : MelonMod
                 .Select(entry => $"{entry.index}:{entry.item!.Definition?.ID ?? "unknown"}/{entry.item.Quality}");
             LoggerInstance.Warning($"Remote bud verification failed for {request.ProductId}/{request.Quality} " +
                                    $"at reported slot {request.InventorySlot}; host inventory: {string.Join(", ", visibleProducts)}");
-            SendPlantResult(sender, request.RequestId, false, "The host could not find that bud in your inventory");
-            return;
+            // Newly-created products do not immediately replace the old item definition in
+            // the host's mirror of a co-op inventory. Verify the strain against the host's
+            // product catalogue; the requesting client consumes its actual bud after ack.
+            definition = ResolveOrImportRemoteProduct(request);
+            if (definition is null || !Enum.IsDefined(typeof(EQuality), request.Quality))
+            {
+                SendPlantResult(sender, request.RequestId, false, "The host has not registered that strain yet");
+                return;
+            }
+            equipped = definition.GetDefaultInstance(1).TryCast<ProductItemInstance>();
+            if (equipped is null)
+            {
+                SendPlantResult(sender, request.RequestId, false, "The host could not prepare that strain");
+                return;
+            }
+            equipped.Quality = (EQuality)request.Quality;
+            verifiedSlot = request.InventorySlot;
+            LoggerInstance.Msg($"Using host catalogue verification for newly replicated co-op strain {definition.ID}/{equipped.Quality}.");
         }
 
         var requestedPosition = new Vector3(request.PotX, request.PotY, request.PotZ);
@@ -427,6 +448,43 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
         PlantOnHost(sender, pot, player, definition, equipped, verifiedSlot, request.InventorySlot, request.RequestId);
+    }
+
+    private WeedDefinition? ResolveOrImportRemoteProduct(CultivationMessage request)
+    {
+        var definition = Registry.GetItem<WeedDefinition>(request.ProductId);
+        var manager = UnityEngine.Object.FindObjectOfType<ProductManager>();
+        definition ??= FindCreatedWeed(manager, request.ProductId);
+        if (definition is not null || manager is null || string.IsNullOrWhiteSpace(request.ProductDataJson))
+            return definition;
+        try
+        {
+            var data = JsonUtility.FromJson<WeedProductData>(request.ProductDataJson);
+            if (data is null || !data.ID.Equals(request.ProductId, StringComparison.OrdinalIgnoreCase)) return null;
+            var properties = new Il2CppSystem.Collections.Generic.List<string>();
+            if (data.Properties is not null)
+                foreach (var property in data.Properties)
+                    if (!string.IsNullOrWhiteSpace(property)) properties.Add(property);
+            manager.CreateWeed_Server(data.Name, data.ID, data.DrugType, properties, data.AppearanceSettings);
+            definition = Registry.GetItem<WeedDefinition>(request.ProductId) ?? FindCreatedWeed(manager, request.ProductId);
+            if (definition is not null)
+                LoggerInstance.Msg($"Imported co-op-created strain {definition.Name} into the host product catalogue.");
+            return definition;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Could not import co-op-created strain {request.ProductId}: {ex.GetBaseException().Message}");
+            return null;
+        }
+    }
+
+    private static WeedDefinition? FindCreatedWeed(ProductManager? manager, string productId)
+    {
+        if (manager?.createdProducts is null) return null;
+        foreach (var candidate in manager.createdProducts)
+            if (candidate is WeedDefinition weed && weed.ID.Equals(productId, StringComparison.OrdinalIgnoreCase))
+                return weed;
+        return null;
     }
 
     private void ConsumeAuthorizedBud(CultivationMessage message)
@@ -666,7 +724,7 @@ public sealed class ClonalCultivationMod : MelonMod
         _nextTraitUpdate = Time.unscaledTime + 0.5f;
         if (Time.unscaledTime >= _nextPotDiscovery)
         {
-            _nextPotDiscovery = Time.unscaledTime + 8f;
+            _nextPotDiscovery = Time.unscaledTime + 30f;
             foreach (var candidate in UnityEngine.Object.FindObjectsOfType<Pot>())
             {
                 if (candidate is null) continue;
@@ -779,7 +837,6 @@ public sealed class ClonalCultivationMod : MelonMod
         }
         if (string.IsNullOrWhiteSpace(seedId) || !_productsBySeed.TryGetValue(seedId, out var product))
         {
-            LoggerInstance.Msg($"Harvest hook ignored seed {seedId ?? "none"}; clone mapping unavailable.");
             return original;
         }
         if (_qualityBySeed.TryGetValue(seedId, out var qualityTemplate))

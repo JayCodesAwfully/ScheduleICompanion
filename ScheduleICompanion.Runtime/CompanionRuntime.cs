@@ -47,7 +47,7 @@ public sealed class CompanionRuntime : ICompanionRuntime
 
         if (now >= _nextPositionSend)
         {
-            _nextPositionSend = now + 0.20f;
+            _nextPositionSend = now + 0.33f;
             _probe.PublishPlayerPosition();
         }
     }

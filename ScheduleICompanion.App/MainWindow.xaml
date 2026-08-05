@@ -710,7 +710,13 @@
                                 <TextBlock Text="Choose a recruited dealer to open their phone management and inventory interface."
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,7"/>
                                 <WrapPanel>
-                                    <ComboBox x:Name="DealerDebugCombo" Width="210" DisplayMemberPath="Title"/>
+                                    <ComboBox x:Name="DealerDebugCombo" Width="210">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Title}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                     <Button Content="Talk to dealer" Click="OpenDealer_Click" Margin="6,0,0,0"/>
                                 </WrapPanel>
                                 <WrapPanel Margin="0,7,0,0">

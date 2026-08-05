@@ -14,6 +14,7 @@ internal sealed class CultivationMessage
     public Guid RequestId { get; set; }
     public ulong Recipient { get; set; }
     public string ProductId { get; set; } = "";
+    public string ProductDataJson { get; set; } = "";
     public int Quality { get; set; }
     public int InventorySlot { get; set; } = -1;
     public float PotX { get; set; }

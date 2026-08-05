@@ -708,15 +708,49 @@ public sealed class BackpackMod : MelonMod
 
     private bool CanOpen()
     {
-        if (Player.Local is null) return false;
-        if (StorageMenu.Instance?.IsOpen == true) return false;
+        try
+        {
+            if (Player.Local is null) return false;
+        }
+        catch
+        {
+            return false;
+        }
+        try
+        {
+            var storageMenu = StorageMenu.Instance;
+            if (storageMenu is not null && storageMenu.IsOpen) return false;
+        }
+        catch
+        {
+            // Scene and runtime transitions can leave an IL2CPP singleton wrapper pointing
+            // at a destroyed menu. It must not prevent the personal backpack from opening.
+        }
         // Native shelves can leave the cursor unlocked for a frame (or indefinitely on a
         // client) after closing. Camera look is the reliable signal that gameplay resumed.
-        if (Cursor.lockState != CursorLockMode.Locked && PlayerCamera.Instance?.CanLook != true) return false;
-        var selected = EventSystem.current?.currentSelectedGameObject;
-        if (selected is not null &&
-            (selected.GetComponent<InputField>() is not null || selected.GetComponent<TMP_InputField>() is not null))
-            return false;
+        if (Cursor.lockState != CursorLockMode.Locked)
+        {
+            try
+            {
+                var camera = PlayerCamera.Instance;
+                if (camera is null || !camera.CanLook) return false;
+            }
+            catch
+            {
+                // A stale camera singleton is equivalent to no UI blocking gameplay.
+            }
+        }
+        try
+        {
+            var selected = EventSystem.current?.currentSelectedGameObject;
+            if (selected is not null &&
+                (selected.GetComponent<InputField>() is not null || selected.GetComponent<TMP_InputField>() is not null))
+                return false;
+        }
+        catch
+        {
+            // Selected UI objects may be destroyed during a runtime refresh.
+        }
         return true;
     }
 
