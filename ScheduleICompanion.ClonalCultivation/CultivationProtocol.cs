@@ -20,6 +20,7 @@ internal sealed class CultivationMessage
     public float PotY { get; set; }
     public float PotZ { get; set; }
     public bool Success { get; set; }
+    public bool ConsumeOne { get; set; }
     public string Error { get; set; } = "";
 }
 

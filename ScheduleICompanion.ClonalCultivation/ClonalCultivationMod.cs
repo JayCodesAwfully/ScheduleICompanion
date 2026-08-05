@@ -235,11 +235,11 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        PlantOnHost(LocalSteamId(), pot, player, definition, weed, slotIndex, Guid.NewGuid());
+        PlantOnHost(LocalSteamId(), pot, player, definition, weed, slotIndex, slotIndex, Guid.NewGuid());
     }
 
     private void PlantOnHost(ulong sender, Pot pot, Player player, WeedDefinition definition,
-        ProductItemInstance weed, int slotIndex, Guid requestId)
+        ProductItemInstance weed, int hostSlotIndex, int clientSlotIndex, Guid requestId)
     {
         var seedId = SeedId(definition.ID, (int)weed.Quality);
         EnsureCloneSeed(definition, weed.Quality);
@@ -255,8 +255,8 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
 
-        var held = slotIndex >= 0 && slotIndex < player._inventory.Length
-            ? player._inventory[slotIndex].ItemInstance?.TryCast<ProductItemInstance>()
+        var held = hostSlotIndex >= 0 && hostSlotIndex < player._inventory.Length
+            ? player._inventory[hostSlotIndex].ItemInstance?.TryCast<ProductItemInstance>()
             : null;
         var heldDefinition = held?.Definition?.TryCast<WeedDefinition>();
         if (held is null || heldDefinition is null ||
@@ -273,12 +273,17 @@ public sealed class ClonalCultivationMod : MelonMod
             _cloneByPot[potKey] = (definition, plantedTemplate);
             _trackedPots[potKey] = pot;
         }
-        var quantityBefore = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
-        player._inventory[slotIndex].ChangeQuantity(-1, true);
-        var quantityAfter = player._inventory[slotIndex].ItemInstance?.GetTotalAmount() ?? 0;
+        var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
+        var quantityAfter = quantityBefore;
+        if (sender == LocalSteamId())
+        {
+            player._inventory[hostSlotIndex].ChangeQuantity(-1, true);
+            quantityAfter = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
+        }
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
-        SendPlantResult(sender, requestId, true, _status);
+        SendPlantResult(sender, requestId, true, _status, clientSlotIndex, definition.ID, (int)weed.Quality,
+            sender != LocalSteamId());
     }
 
     private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
@@ -293,6 +298,7 @@ public sealed class ClonalCultivationMod : MelonMod
             (message.Recipient == 0 || message.Recipient == LocalSteamId()))
         {
             if (!_completedPlantRequests.Add(message.RequestId)) return;
+            if (message.Success && message.ConsumeOne) ConsumeAuthorizedBud(message);
             _status = message.Success ? "Host planted the bud" : "Planting rejected: " + message.Error;
             LoggerInstance.Msg(_status);
         }
@@ -351,10 +357,31 @@ public sealed class ClonalCultivationMod : MelonMod
             SendPlantResult(sender, request.RequestId, false, "You are too far from the targeted pot");
             return;
         }
-        PlantOnHost(sender, pot, player, definition, equipped, verifiedSlot, request.RequestId);
+        PlantOnHost(sender, pot, player, definition, equipped, verifiedSlot, request.InventorySlot, request.RequestId);
     }
 
-    private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail)
+    private void ConsumeAuthorizedBud(CultivationMessage message)
+    {
+        var player = Player.Local;
+        if (player is null) return;
+        var slotOrder = Enumerable.Range(0, player._inventory.Length)
+            .OrderBy(index => index == message.InventorySlot ? 0 : 1);
+        foreach (var index in slotOrder)
+        {
+            var item = player._inventory[index].ItemInstance?.TryCast<ProductItemInstance>();
+            var definition = item?.Definition?.TryCast<WeedDefinition>();
+            if (item is null || definition is null ||
+                !definition.ID.Equals(message.ProductId, StringComparison.OrdinalIgnoreCase) ||
+                (int)item.Quality != message.Quality) continue;
+            player._inventory[index].ChangeQuantity(-1, true);
+            LoggerInstance.Msg($"Consumed host-authorized bud from local slot {index}.");
+            return;
+        }
+        LoggerInstance.Warning("Host planted the clone, but the authorized bud was no longer in the local inventory.");
+    }
+
+    private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail,
+        int inventorySlot = -1, string productId = "", int quality = 0, bool consumeOne = false)
     {
         LoggerInstance.Msg($"Host planting {requestId} for Steam {recipient}: {(success ? "accepted" : "rejected - " + detail)}");
         if (recipient == LocalSteamId()) return;
@@ -364,6 +391,10 @@ public sealed class ClonalCultivationMod : MelonMod
             RequestId = requestId,
             Recipient = recipient,
             Success = success,
+            ConsumeOne = consumeOne,
+            InventorySlot = inventorySlot,
+            ProductId = productId,
+            Quality = quality,
             Error = success ? "" : detail
         });
     }
@@ -422,8 +453,19 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private void UpdateClonePlantTraits()
     {
-        if (_trackedPots.Count == 0 || Time.unscaledTime < _nextTraitUpdate) return;
+        if (Time.unscaledTime < _nextTraitUpdate) return;
         _nextTraitUpdate = Time.unscaledTime + 0.5f;
+        foreach (var candidate in UnityEngine.Object.FindObjectsOfType<Pot>())
+        {
+            var plant = candidate?.Plant;
+            var seedId = plant?.SeedDefinition?.ID;
+            if (candidate is null || plant is null || string.IsNullOrWhiteSpace(seedId) ||
+                !_productsBySeed.TryGetValue(seedId, out var product) ||
+                !_qualityBySeed.TryGetValue(seedId, out var template)) continue;
+            var potKey = candidate.Pointer.ToInt64();
+            _trackedPots[potKey] = candidate;
+            _cloneByPot[potKey] = (product, template);
+        }
         foreach (var entry in _trackedPots.ToArray())
         {
             var pot = entry.Value;
@@ -483,10 +525,9 @@ public sealed class ClonalCultivationMod : MelonMod
         var potKey = plant.Pot?.Pointer.ToInt64() ?? 0;
         if (potKey != 0 && _cloneByPot.TryGetValue(potKey, out var plantedClone))
         {
-            var originalProduct = original?.TryCast<ProductItemInstance>();
-            if (originalProduct is null) return original;
-            originalProduct.Quality = plantedClone.Template.Quality;
-            return original;
+            var copiedHarvest = plantedClone.Template.GetCopy(quantity);
+            LoggerInstance.Msg($"Harvested {quantity}x {plantedClone.Product.Name} at preserved quality {plantedClone.Template.Quality}.");
+            return copiedHarvest;
         }
         if (string.IsNullOrWhiteSpace(seedId) || !_productsBySeed.TryGetValue(seedId, out var product))
         {
