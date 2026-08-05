@@ -465,10 +465,12 @@ public sealed class BackpackMod : MelonMod
     private void NativeStorageClosed()
     {
         if (_nativeStorage is null || _state is null) return;
-        // The native storage object is only a UI mirror. Host-authorized transfers
-        // already update _state, so closing must not manufacture a newer client
-        // revision that can overwrite a concurrent host snapshot.
+        var slots = _nativeStorage.ItemSlots;
+        for (var i = 0; i < 12; i++)
+            _state.Slots[i] = i < slots.Count && slots[i].ItemInstance is { } item ? SerializeItem(item) : "";
+        _state.Revision++;
         StageState(_state);
+        SyncStateWithHost();
         _waitingForHost = false;
         _status = "Closing Backpack and saving game...";
         RestoreSharedStorageMenu();
@@ -645,24 +647,6 @@ public sealed class BackpackMod : MelonMod
     [HarmonyPatch(typeof(ItemUIManager), "EndDrag")]
     private static class NativeBackpackRefreshPatch
     {
-        private static bool Prefix(ItemUIManager __instance)
-        {
-            var active = ActiveInstance;
-            if (active?._nativeStorage is null || __instance.draggedSlot?.assignedSlot is null ||
-                __instance.HoveredSlot?.assignedSlot is null) return true;
-            var sourceIsBackpack = active.OwnsNativeSlot(__instance.draggedSlot.assignedSlot);
-            var targetIsBackpack = active.OwnsNativeSlot(__instance.HoveredSlot.assignedSlot);
-            if (!sourceIsBackpack && !targetIsBackpack) return true;
-            active.HandleNativeDrop(__instance);
-            if (__instance.tempIcon is not null)
-                UnityEngine.Object.Destroy(__instance.tempIcon.gameObject);
-            __instance.tempIcon = null;
-            __instance.draggedSlot = null;
-            __instance.draggedAmount = 0;
-            __instance.isDraggingCash = false;
-            return false;
-        }
-
         private static void Postfix()
         {
             var instance = ActiveInstance;
