@@ -8,18 +8,18 @@
       "description": "12 slot backpack, press B in-game to use",
       "dllName": "ScheduleICompanion.Backpack.dll",
       "downloadUrl": "bundled:ScheduleICompanion.Backpack.dll",
-      "sha256": "3313E589BF179F90D45077C40B72DAA10CCE0FCF8EFD46F36875CCA4697ED7E5",
+      "sha256": "04B23EBE033C154455DD699EB70D3FB9EE48697B76F2B4242E0951BE41C808AA",
       "experimental": true,
       "multiplayerPolicy": "host-and-owner-required"
     },
     {
       "id": "clonal-cultivation",
       "name": "Cultivation",
-      "version": "0.2.9",
+      "version": "0.2.10",
       "description": "Plant a created bud to grow a new plant based from it rather than a seed.",
       "dllName": "ScheduleICompanion.ClonalCultivation.dll",
       "downloadUrl": "bundled:ScheduleICompanion.ClonalCultivation.dll",
-      "sha256": "D84D18CC1C7FD76D766F4BB02704C24152915C1515C2454106C690A646532C9C",
+      "sha256": "28A9CE3F1A5B43B7119DBD665C8BE11FE2262065053FE09598DCDCC23F62E231",
       "experimental": true,
       "multiplayerPolicy": "host-and-owner-required"
     }
