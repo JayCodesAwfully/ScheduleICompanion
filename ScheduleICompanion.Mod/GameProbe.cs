@@ -31,7 +31,14 @@ internal sealed record ActiveOrderDetailPayload(
     string Customer, string Location, string Window, float Payment, IReadOnlyList<OrderLine> Lines);
 internal sealed record ProductStockPayload(string Product, int Quantity);
 internal sealed record MixRecommendationPayload(string Product, string BaseProduct, string Ingredient, float Price);
-internal sealed record DebugCatalogPayload(IReadOnlyList<string> Interfaces);
+internal sealed record DebugCatalogPayload(
+    IReadOnlyList<string> Interfaces,
+    IReadOnlyList<string> LaunderingInterfaces,
+    IReadOnlyList<string> TeleportDestinations,
+    IReadOnlyList<string> SpawnItems,
+    IReadOnlyList<string> SpawnVehicles,
+    IReadOnlyList<string> People);
+internal sealed record DebugInspectorPayload(string Title, IReadOnlyList<string> Lines);
 internal sealed record OperationItemPayload(string Title, string Detail, string State);
 internal sealed record OperationsSnapshotPayload(
     IReadOnlyList<ActiveOrderDetailPayload> Orders,
@@ -84,6 +91,7 @@ public sealed class GameProbe
     private float _nextContractFallbackScan;
     private float _nextNetWorthRefresh;
     private float _nextDebugCatalogPublish;
+    private int _debugCatalogWarmupPasses;
     private float _nextNpcMarkerPublish;
     private float _nextMixRecommendationRefresh;
     private int _detailPhase;
@@ -160,6 +168,7 @@ public sealed class GameProbe
         _nextContractFallbackScan = now + 5f;
         _nextNetWorthRefresh = now + 3f;
         _nextDebugCatalogPublish = now + 2f;
+        _debugCatalogWarmupPasses = 0;
         _nextNpcMarkerPublish = now;
         _nextMixRecommendationRefresh = now;
         _detailPhase = 0;
@@ -213,8 +222,9 @@ public sealed class GameProbe
 
         if (now >= _nextDebugCatalogPublish)
         {
-            _nextDebugCatalogPublish = now + 60f;
             PublishDebugCatalog();
+            _debugCatalogWarmupPasses++;
+            _nextDebugCatalogPublish = now + (_debugCatalogWarmupPasses < 4 ? 3f : 60f);
         }
 
         // Run one dashboard section at a time so scene searches and inventory reads cannot
@@ -275,14 +285,35 @@ public sealed class GameProbe
                 case "instant_grow":
                     SetCultivationInstantGrow(command.Enabled);
                     break;
+                case "refresh_debug_catalog":
+                    PublishDebugCatalog();
+                    break;
                 case "clear_weather":
                     SubmitConsoleCommand("setweather clear", "Clear weather");
                     break;
                 case "set_time":
                     SetGameTime(value);
                     break;
+                case "teleport":
+                    TeleportTo(value);
+                    break;
+                case "inspect_plant":
+                    InspectTargetPlant();
+                    break;
+                case "advance_plant":
+                    AdvanceTargetPlant();
+                    break;
+                case "mature_plant":
+                    SetTargetPlantGrowth(1f, "Target plant matured.");
+                    break;
+                case "reset_plant":
+                    SetTargetPlantGrowth(0f, "Target plant reset to its first stage.");
+                    break;
+                case "inspect_person":
+                    InspectPerson(value);
+                    break;
                 case "set_weather":
-                    SubmitConsoleCommand($"setweather {RequireCommandToken(value, "weather")}", "Set weather");
+                    SubmitConsoleCommand($"setweather {RequireWeatherToken(value)}", "Set weather");
                     break;
                 case "open_dealer":
                     OpenDealerManagement(value);
@@ -292,6 +323,9 @@ public sealed class GameProbe
                     break;
                 case "open_interface":
                     OpenGameInterface(value);
+                    break;
+                case "open_laundering":
+                    OpenLaunderingInterface(value);
                     break;
                 case "add_item":
                     SubmitConsoleCommand(
@@ -346,8 +380,12 @@ public sealed class GameProbe
             case 8: _operationDeliveries = BuildDeliveryStatus(); PublishOperationsSnapshot(); break;
             case 9: _operationEmployees = BuildEmployeeStatus(); PublishOperationsSnapshot(); break;
             case 10:
-                _operationLaundering = BuildLaunderingStatus();
-                PublishOperationsSnapshot();
+                var laundering = BuildLaunderingStatus();
+                if (!_operationLaundering.SequenceEqual(laundering))
+                {
+                    _operationLaundering = laundering;
+                    PublishOperationsSnapshot();
+                }
                 break;
         }
 
@@ -369,6 +407,147 @@ public sealed class GameProbe
             throw new InvalidOperationException("The game time manager is not ready.");
         _timeManager.SetTimeAndSync(time);
         Report("DevTools", $"Game time set to {time / 100:00}:{time % 100:00}.");
+    }
+
+    private void TeleportTo(string selection)
+    {
+        if (_selectedPlayer is null) throw new InvalidOperationException("The local player is not ready.");
+        var closingBracket = selection.IndexOf(']');
+        if (!selection.StartsWith('[') || closingBracket < 2)
+            throw new ArgumentException("Choose a teleport destination.");
+        var kind = selection[1..closingBracket].Trim();
+        var name = selection[(closingBracket + 1)..].Trim();
+        if (name.Length == 0) throw new ArgumentException("Choose a teleport destination.");
+        Transform? target = null;
+        if ((kind.Equals("Safehouse", StringComparison.OrdinalIgnoreCase) || kind.Equals("Business", StringComparison.OrdinalIgnoreCase)) &&
+            GameProperty.Properties is not null)
+            foreach (var property in GameProperty.Properties)
+                if (property is not null && (property.PropertyName ?? property.name).Equals(name, StringComparison.OrdinalIgnoreCase))
+                { target = property.transform; break; }
+        if (kind.Equals("Dealer", StringComparison.OrdinalIgnoreCase) && Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers is not null)
+            foreach (var dealer in Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers)
+                if (dealer is not null && (dealer.FullName ?? dealer.name).Equals(name, StringComparison.OrdinalIgnoreCase))
+                { target = dealer.transform; break; }
+        if (target is null) throw new InvalidOperationException($"Destination '{name}' is not loaded.");
+        _selectedPlayer.position = target.position + Vector3.up;
+        Report("DevTools", $"Teleported to {name}.");
+    }
+
+    private static Pot? FindTargetPlantPot()
+    {
+        var camera = Il2CppScheduleOne.PlayerScripts.PlayerCamera.Instance?.Camera ?? Camera.main;
+        if (camera is null) return null;
+        var ray = new Ray(camera.transform.position, camera.transform.forward);
+        foreach (var hit in Physics.RaycastAll(ray, 7f).OrderBy(hit => hit.distance))
+        {
+            var collider = hit.collider;
+            if (collider is null || collider.GetComponentInParent<Player>() is not null) continue;
+            var pot = collider.GetComponentInParent<Pot>();
+            if (pot?.Plant is not null) return pot;
+            var root = collider.transform.root;
+            if (root is null) continue;
+            pot = root.GetComponentsInChildren<Pot>(true)
+                .Where(candidate => candidate?.Plant is not null)
+                .OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - hit.point))
+                .FirstOrDefault();
+            if (pot is not null) return pot;
+        }
+        return UnityEngine.Object.FindObjectsOfType<Pot>()
+            .Where(pot => pot?.Plant is not null)
+            .Select(pot => new { Pot = pot, Along = Vector3.Dot(pot.transform.position - ray.origin, ray.direction), Offset = Vector3.Cross(ray.direction, pot.transform.position - ray.origin).magnitude })
+            .Where(entry => entry.Along > 0 && entry.Along < 7.5f && entry.Offset < 1.2f)
+            .OrderBy(entry => entry.Offset)
+            .Select(entry => entry.Pot)
+            .FirstOrDefault();
+    }
+
+    private void InspectTargetPlant()
+    {
+        var pot = FindTargetPlantPot() ?? throw new InvalidOperationException("No growing plant found near the crosshair.");
+        var plant = pot.Plant!;
+        PublishInspector("Plant inspector", new[]
+        {
+            $"Plant: {plant.SeedDefinition?.Name ?? plant.SeedDefinition?.ID ?? "Unknown"}",
+            $"Progress: {plant.NormalizedGrowthProgress * 100f:0.0}% ({(plant.IsFullyGrown ? "mature" : "growing")})",
+            $"Quality level: {plant.QualityLevel:0.##}",
+            $"Growth time: {plant.GrowthTime} minutes",
+            $"Yield: {plant.BaseYieldQuantity} base Ã— {plant.YieldMultiplier:0.##}",
+            $"Pot speed: Ã—{pot.GrowSpeedMultiplier:0.##}; temperature: Ã—{pot.GetTemperatureGrowthMultiplier():0.##}",
+            $"Harvest points active: {plant.ActiveHarvestables?.Count ?? 0}"
+        });
+    }
+
+    private void AdvanceTargetPlant()
+    {
+        var pot = FindTargetPlantPot() ?? throw new InvalidOperationException("No growing plant found near the crosshair.");
+        var current = pot.GetGrowthProgressNormalized();
+        var stages = Math.Max(1, pot.Plant?.GrowthStages?.Length ?? 4);
+        var next = Math.Min(1f, (float)(Math.Floor(current * stages) + 1) / stages);
+        pot.SetGrowthProgress_Server(next);
+        Report("DevTools", $"Target plant advanced to {next * 100f:0}%.");
+        InspectTargetPlant();
+    }
+
+    private void SetTargetPlantGrowth(float progress, string message)
+    {
+        var pot = FindTargetPlantPot() ?? throw new InvalidOperationException("No growing plant found near the crosshair.");
+        pot.SetGrowthProgress_Server(progress);
+        Report("DevTools", message);
+        InspectTargetPlant();
+    }
+
+    private void InspectPerson(string selection)
+    {
+        var closingBracket = selection.IndexOf(']');
+        if (!selection.StartsWith('[') || closingBracket < 2)
+            throw new ArgumentException("Choose a customer or dealer.");
+        var kind = selection[1..closingBracket].Trim();
+        var name = selection[(closingBracket + 1)..].Trim();
+        if (kind.Equals("Dealer", StringComparison.OrdinalIgnoreCase) && Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers is not null)
+        {
+            foreach (var dealer in Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers)
+            {
+                if (dealer is null || !(dealer.FullName ?? dealer.name).Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                PublishInspector("Dealer inspector", new[]
+                {
+                    $"Dealer: {dealer.FullName ?? dealer.name}",
+                    $"Cash held: ${dealer.Cash:N0}",
+                    $"Packaged product: {dealer.GetPackagedProductAmount()}",
+                    $"Assigned customers: {dealer.AssignedCustomers?.Count ?? 0}/{Il2CppScheduleOne.Economy.Dealer.MAX_CUSTOMERS}",
+                    $"Relationship: {dealer.RelationData?.NormalizedRelationDelta * 100f:0}%"
+                });
+                return;
+            }
+        }
+        if (kind.Equals("Customer", StringComparison.OrdinalIgnoreCase) && GameCustomer.UnlockedCustomers is not null)
+        {
+            foreach (var customer in GameCustomer.UnlockedCustomers)
+            {
+                if (customer?.NPC is null || !(customer.NPC.FullName ?? customer.NPC.name).Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                PublishInspector("Customer inspector", new[]
+                {
+                    $"Customer: {customer.NPC.FullName ?? customer.NPC.name}",
+                    $"Relationship: {customer.NPC.RelationData?.NormalizedRelationDelta * 100f:0}%",
+                    $"Addiction: {customer.CurrentAddiction * 100f:0}%",
+                    $"Assigned dealer: {customer.AssignedDealer?.FullName ?? "None"}",
+                    $"Unlocked: {customer.NPC.RelationData?.Unlocked == true}",
+                    $"Maximum quantity per product: {GameCustomer.MaxOrderQuantityPerProduct}"
+                });
+                return;
+            }
+        }
+        throw new InvalidOperationException($"'{name}' is not currently loaded.");
+    }
+
+    private void PublishInspector(string title, IReadOnlyList<string> lines) =>
+        _server.Publish(new BridgeMessage { Type = "debug_inspector", Payload = new DebugInspectorPayload(title, lines) });
+
+    private static string RequireWeatherToken(string value)
+    {
+        var weather = value.Trim().ToLowerInvariant();
+        return weather is "clear" or "lightrain" or "heavyrain"
+            ? weather
+            : throw new ArgumentException("Weather must be Clear, Light Rain, or Heavy Rain.");
     }
 
     private static string RequireCommandToken(string value, string label)
@@ -440,62 +619,57 @@ public sealed class GameProbe
     private void OpenGameInterface(string selection)
     {
         selection = selection.Trim();
-        var separator = selection.IndexOf('·');
-        var kind = separator < 0 ? "Shop" : selection[..separator].Trim().TrimEnd('Â').Trim();
-        var name = separator < 0 ? selection : selection[(separator + 1)..].Trim();
-        if (kind.Equals("Shop", StringComparison.OrdinalIgnoreCase))
+        if (selection.StartsWith("[Shop]", StringComparison.OrdinalIgnoreCase))
         {
-            OpenShopInterface(name);
+            OpenShopInterface(selection[6..].Trim());
             return;
         }
 
-        if (kind.Equals("ATM", StringComparison.OrdinalIgnoreCase))
+        if (selection.Equals("ATM", StringComparison.OrdinalIgnoreCase))
         {
             var atm = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.Money.ATM>()
-                .FirstOrDefault(item => item is not null && item.gameObject.scene.IsValid() &&
-                    (item.gameObject.name ?? item.name ?? "").Equals(name, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(item => item is not null && item.gameObject.scene.IsValid());
             if (atm is null)
-                throw new InvalidOperationException($"ATM interface '{name}' is not loaded.");
-            OpenWorldInteraction(atm, "ATM", name);
-            Report("DevTools", $"Opened ATM interface {name}.");
+                throw new InvalidOperationException("An ATM interface is not loaded.");
+            OpenWorldInteraction(atm, "ATM", atm.gameObject.name ?? "ATM");
             return;
         }
 
-        if (kind.Equals("Payphone", StringComparison.OrdinalIgnoreCase))
+        if (selection.Equals("Payphone", StringComparison.OrdinalIgnoreCase))
         {
-            var payphone = FindLoadedInterface<PayPhone>(name);
-            OpenWorldInteraction(payphone, "payphone", name);
+            var payphone = Resources.FindObjectsOfTypeAll<PayPhone>().First(item => item is not null && item.gameObject.scene.IsValid());
+            OpenWorldInteraction(payphone, "payphone", payphone.gameObject.name ?? "Payphone");
             return;
         }
 
-        if (kind.Equals("Vending", StringComparison.OrdinalIgnoreCase))
+        if (selection.Equals("Vending machine", StringComparison.OrdinalIgnoreCase))
         {
-            var vending = FindLoadedInterface<VendingMachine>(name);
-            OpenWorldInteraction(vending, "vending machine", name);
+            var vending = Resources.FindObjectsOfTypeAll<VendingMachine>().First(item => item is not null && item.gameObject.scene.IsValid());
+            OpenWorldInteraction(vending, "vending machine", vending.gameObject.name ?? "Vending machine");
             return;
         }
 
-        if (kind.Equals("Jukebox", StringComparison.OrdinalIgnoreCase))
+        if (selection.Equals("Jukebox", StringComparison.OrdinalIgnoreCase))
         {
-            var jukebox = FindLoadedInterface<JukeboxInterface>(name);
-            OpenWorldInteraction(jukebox, "jukebox", name);
+            var jukebox = Resources.FindObjectsOfTypeAll<JukeboxInterface>().First(item => item is not null && item.gameObject.scene.IsValid());
+            OpenWorldInteraction(jukebox, "jukebox", jukebox.gameObject.name ?? "Jukebox");
             return;
         }
 
-        if (kind.Equals("Laundering", StringComparison.OrdinalIgnoreCase))
-        {
-            var laundering = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
-                .FirstOrDefault(item => item is not null && item.gameObject.scene.IsValid() &&
-                    ((item.Business?.PropertyName ?? "").Equals(name, StringComparison.OrdinalIgnoreCase) ||
-                     (item.gameObject.name ?? item.name ?? "").Equals(name, StringComparison.OrdinalIgnoreCase)));
-            if (laundering is null)
-                throw new InvalidOperationException($"Laundering interface '{name}' is not loaded.");
-            laundering.Open();
-            Report("DevTools", $"Opened laundering interface {name}.");
-            return;
-        }
+        throw new InvalidOperationException($"Interface '{selection}' is not supported yet.");
+    }
 
-        throw new InvalidOperationException($"Interface type '{kind}' is not supported yet.");
+    private void OpenLaunderingInterface(string name)
+    {
+        name = name.Trim();
+        var laundering = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
+            .FirstOrDefault(item => item is not null && item.gameObject.scene.IsValid() && IsOwnedLaunderingInterface(item) &&
+                ((item.Business?.PropertyName ?? "").Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                 (item.gameObject.name ?? item.name ?? "").Equals(name, StringComparison.OrdinalIgnoreCase)));
+        if (laundering is null)
+            throw new InvalidOperationException($"Laundering interface '{name}' is not loaded.");
+        laundering.Open();
+        Report("DevTools", $"Opened laundering interface {name}.");
     }
 
     private static T FindLoadedInterface<T>(string name) where T : Component
@@ -537,30 +711,76 @@ public sealed class GameProbe
         {
             var interfaces = Resources.FindObjectsOfTypeAll<ShopInterface>()
                 .Where(item => item is not null && item.gameObject.scene.IsValid())
-                .Select(item => $"Shop · {item.gameObject.name ?? item.name ?? "Shop"}")
+                .Select(item => $"[Shop] {item.gameObject.name ?? item.name ?? "Shop"}")
                 .Concat(Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.Money.ATM>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"ATM · {item.gameObject.name ?? item.name ?? "ATM"}").Take(1))
+                    .Select(_ => "ATM").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<PayPhone>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Payphone · {item.gameObject.name ?? item.name ?? "Payphone"}").Take(1))
+                    .Select(_ => "Payphone").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<VendingMachine>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Vending · {item.gameObject.name ?? item.name ?? "Vending machine"}").Take(1))
+                    .Select(_ => "Vending machine").Take(1))
                 .Concat(Resources.FindObjectsOfTypeAll<JukeboxInterface>()
                     .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Jukebox · {item.gameObject.name ?? item.name ?? "Jukebox"}").Take(1))
-                .Concat(Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
-                    .Where(item => item is not null && item.gameObject.scene.IsValid())
-                    .Select(item => $"Laundering · {item.Business?.PropertyName ?? item.gameObject.name ?? item.name ?? "Business"}"))
+                    .Select(_ => "Jukebox").Take(1))
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+
+            var launderingInterfaces = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.UI.LaunderingInterface>()
+                .Where(item => item is not null && item.gameObject.scene.IsValid() && IsOwnedLaunderingInterface(item))
+                .Select(item => item.Business?.PropertyName ?? item.gameObject.name ?? item.name ?? "Business")
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var destinations = new List<string>();
+            if (GameProperty.Properties is not null)
+                foreach (var property in GameProperty.Properties)
+                    if (property is not null)
+                        destinations.Add($"[{(property is GameBusiness ? "Business" : "Safehouse")}] {property.PropertyName ?? property.name}");
+            if (Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers is not null)
+                foreach (var dealer in Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers)
+                    if (dealer is not null)
+                        destinations.Add($"[Dealer] {dealer.FullName ?? dealer.name}");
+
+            var spawnItems = new List<string>();
+            var registry = UnityEngine.Object.FindObjectOfType<Il2CppScheduleOne.Registry>();
+            if (registry is not null)
+                foreach (var item in registry.GetAllItems())
+                    if (item is not null && !string.IsNullOrWhiteSpace(item.ID))
+                        spawnItems.Add($"{item.Name ?? item.ID} ({item.ID})");
+
+            var spawnVehicles = new List<string>();
+            var vehicleManager = UnityEngine.Object.FindObjectOfType<Il2CppScheduleOne.Vehicles.VehicleManager>();
+            if (vehicleManager?.VehiclePrefabs is not null)
+                foreach (var vehicle in vehicleManager.VehiclePrefabs)
+                    if (vehicle is not null && !string.IsNullOrWhiteSpace(vehicle.VehicleCode))
+                        spawnVehicles.Add($"{vehicle.VehicleName ?? vehicle.VehicleCode} ({vehicle.VehicleCode})");
+
+            var people = new List<string>();
+            if (GameCustomer.UnlockedCustomers is not null)
+                foreach (var customer in GameCustomer.UnlockedCustomers)
+                    if (customer?.NPC is not null)
+                        people.Add($"[Customer] {customer.NPC.FullName ?? customer.NPC.name}");
+            if (Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers is not null)
+                foreach (var dealer in Il2CppScheduleOne.Economy.Dealer.AllPlayerDealers)
+                    if (dealer is not null)
+                        people.Add($"[Dealer] {dealer.FullName ?? dealer.name}");
+
             _server.Publish(new BridgeMessage
             {
                 Type = "debug_catalog",
-                Payload = new DebugCatalogPayload(interfaces)
+                Payload = new DebugCatalogPayload(
+                    interfaces,
+                    launderingInterfaces,
+                    destinations.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToArray(),
+                    spawnItems.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToArray(),
+                    spawnVehicles.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToArray(),
+                    people.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToArray())
             });
             var summary = $"{interfaces.Length} supported interface(s)";
             if (summary != _lastDebugCatalogSummary)
@@ -1193,6 +1413,27 @@ public sealed class GameProbe
             }).ToArray();
     }
 
+    private static bool IsOwnedLaunderingInterface(Il2CppScheduleOne.UI.LaunderingInterface laundering)
+    {
+        try
+        {
+            var business = laundering.Business;
+            if (business is null || GameBusiness.OwnedBusinesses is null) return false;
+            var businessId = business.GetInstanceID();
+            foreach (var ownedBusiness in GameBusiness.OwnedBusinesses)
+            {
+                if (ownedBusiness is not null && ownedBusiness.GetInstanceID() == businessId)
+                    return true;
+            }
+        }
+        catch
+        {
+            // An interface can exist while its business is still loading. Keep it hidden
+            // until the next catalogue refresh can verify ownership safely.
+        }
+        return false;
+    }
+
     private static OperationItemPayload[] BuildLaunderingStatus()
     {
         if (GameBusiness.OwnedBusinesses is null) return Array.Empty<OperationItemPayload>();
@@ -1203,10 +1444,11 @@ public sealed class GameProbe
             foreach (var operation in business.LaunderingOperations)
             {
                 if (operation is null) continue;
+                var ready = operation.minutesSinceStarted >= operation.completionTime_Minutes;
                 rows.Add(new OperationItemPayload(
                     business.PropertyName ?? "Laundering",
-                    $"£{operation.amount:0} · {Math.Max(0, operation.completionTime_Minutes - operation.minutesSinceStarted)} min remaining",
-                    operation.minutesSinceStarted >= operation.completionTime_Minutes ? "Attention" : "Good"));
+                    $"${operation.amount:N0}",
+                    ready ? "Ready" : "In Progress"));
             }
         }
         return rows.ToArray();

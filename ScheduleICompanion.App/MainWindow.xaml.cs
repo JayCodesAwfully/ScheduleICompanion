@@ -26,6 +26,11 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<OperationItemRow> _employees = new();
     private readonly ObservableCollection<OperationItemRow> _laundering = new();
     private readonly ObservableCollection<string> _debugShops = new();
+    private readonly ObservableCollection<string> _debugLaundering = new();
+    private readonly ObservableCollection<string> _debugTeleportDestinations = new();
+    private readonly ObservableCollection<string> _debugSpawnItems = new();
+    private readonly ObservableCollection<string> _debugSpawnVehicles = new();
+    private readonly ObservableCollection<string> _debugPeople = new();
     private readonly ObservableCollection<ManagedModRow> _managedMods = new();
     private readonly ObservableCollection<MixRecommendationPayload> _mixRecommendations = new();
     private readonly PipeClient _pipe = new();
@@ -70,6 +75,11 @@ public partial class MainWindow : Window
         DealerList.ItemsSource = _dealers;
         DealerDebugCombo.ItemsSource = _dealers;
         ShopDebugCombo.ItemsSource = _debugShops;
+        LaunderingDebugCombo.ItemsSource = _debugLaundering;
+        TeleportDebugCombo.ItemsSource = _debugTeleportDestinations;
+        SpawnItemCombo.ItemsSource = _debugSpawnItems;
+        SpawnVehicleCombo.ItemsSource = _debugSpawnVehicles;
+        PersonInspectorCombo.ItemsSource = _debugPeople;
         DeliveryList.ItemsSource = _deliveries;
         EmployeeList.ItemsSource = _employees;
         LaunderingList.ItemsSource = _laundering;
@@ -163,11 +173,44 @@ public partial class MainWindow : Window
                     if (payload is null) break;
                     var selected = ShopDebugCombo.Text;
                     _debugShops.Clear();
-                    foreach (var item in payload.Interfaces) _debugShops.Add(item);
+                    _debugLaundering.Clear();
+                    foreach (var item in payload.Interfaces ?? Array.Empty<string>())
+                        _debugShops.Add(item);
+                    foreach (var item in payload.LaunderingInterfaces ?? Array.Empty<string>())
+                        _debugLaundering.Add(item);
                     if (!string.IsNullOrWhiteSpace(selected) && _debugShops.Contains(selected))
+                    {
                         ShopDebugCombo.SelectedItem = selected;
+                        ShopDebugCombo.Text = selected;
+                    }
                     else if (_debugShops.Count > 0)
+                    {
                         ShopDebugCombo.SelectedIndex = 0;
+                        ShopDebugCombo.Text = _debugShops[0];
+                    }
+                    if (_debugLaundering.Count > 0)
+                    {
+                        LaunderingDebugCombo.SelectedIndex = 0;
+                        LaunderingDebugCombo.Text = _debugLaundering[0];
+                    }
+                    ReplaceStrings(_debugTeleportDestinations, payload.TeleportDestinations);
+                    ReplaceStrings(_debugSpawnItems, payload.SpawnItems);
+                    ReplaceStrings(_debugSpawnVehicles, payload.SpawnVehicles);
+                    ReplaceStrings(_debugPeople, payload.People);
+                    SelectFirst(TeleportDebugCombo);
+                    SelectFirst(SpawnItemCombo);
+                    SelectFirst(SpawnVehicleCombo);
+                    SelectFirst(PersonInspectorCombo);
+                    App.WriteSessionLog($"Debug catalogue applied: {_debugShops.Count} interfaces, {_debugLaundering.Count} laundering, " +
+                        $"{_debugTeleportDestinations.Count} destinations, {_debugSpawnItems.Count} items, {_debugSpawnVehicles.Count} vehicles, {_debugPeople.Count} people.");
+                    break;
+                }
+                case "debug_inspector":
+                {
+                    var payload = JsonSerializer.Deserialize<DebugInspectorPayload>(json);
+                    if (payload is null) break;
+                    InspectorTitleText.Text = payload.Title;
+                    InspectorResultText.Text = string.Join(Environment.NewLine, payload.Lines);
                     break;
                 }
                 case "position":
@@ -334,6 +377,20 @@ public partial class MainWindow : Window
     {
         target.Clear();
         foreach (var row in rows) target.Add(row);
+    }
+
+    private static void ReplaceStrings(ObservableCollection<string> target, IReadOnlyList<string>? rows)
+    {
+        var selected = target.FirstOrDefault();
+        target.Clear();
+        foreach (var row in rows ?? Array.Empty<string>()) target.Add(row);
+    }
+
+    private static void SelectFirst(System.Windows.Controls.ComboBox combo)
+    {
+        if (combo.Items.Count == 0) return;
+        if (combo.SelectedIndex < 0) combo.SelectedIndex = 0;
+        combo.Text = combo.SelectedItem?.ToString() ?? combo.Items[0]?.ToString() ?? "";
     }
 
     private void UpdateClockDisplay()
@@ -1367,6 +1424,13 @@ public partial class MainWindow : Window
     private void SetTime_Click(object sender, RoutedEventArgs e) =>
         SendDebugAction(DebugAction("set_time", SetTimeText.Text), "Set-time command sent");
 
+    private void TimePreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string time }) return;
+        SetTimeText.Text = time;
+        SendDebugAction(DebugAction("set_time", time), $"Setting time to {time}");
+    }
+
     private void OpenDealer_Click(object sender, RoutedEventArgs e)
     {
         var dealer = (DealerDebugCombo.SelectedItem as OperationItemRow)?.Title ?? "";
@@ -1376,12 +1440,48 @@ public partial class MainWindow : Window
     private void OpenShop_Click(object sender, RoutedEventArgs e) =>
         SendDebugAction(DebugAction("open_interface", ShopDebugCombo.Text), "Opening selected interface in game");
 
-    private void AddItem_Click(object sender, RoutedEventArgs e)
+    private void OpenLaundering_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(DebugAction("open_laundering", LaunderingDebugCombo.Text), "Opening laundering interface in game");
+
+    private void InterfaceCombo_DropDownOpened(object sender, EventArgs e) =>
+        _pipe.Send("devtool", new DevToolCommandPayload("refresh_debug_catalog"));
+
+    private void Teleport_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(DebugAction("teleport", TeleportDebugCombo.Text), "Teleporting local player");
+
+    private void InspectPlant_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(new DevToolCommandPayload("inspect_plant"), "Inspecting targeted plant");
+
+    private void AdvancePlant_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(new DevToolCommandPayload("advance_plant"), "Advancing targeted plant");
+
+    private void MaturePlant_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(new DevToolCommandPayload("mature_plant"), "Maturing targeted plant");
+
+    private void ResetPlant_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(new DevToolCommandPayload("reset_plant"), "Resetting targeted plant");
+
+    private void InspectPerson_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(DebugAction("inspect_person", PersonInspectorCombo.Text), "Inspecting customer/dealer");
+
+    private void SpawnSelectedItem_Click(object sender, RoutedEventArgs e)
     {
-        var quantity = int.TryParse(ItemQuantityText.Text, out var parsed) ? Math.Clamp(parsed, 1, 999) : 1;
-        ItemQuantityText.Text = quantity.ToString();
-        SendDebugAction(new DevToolCommandPayload($"add_item|{ItemIdText.Text}", IntervalSeconds: quantity),
-            "Add-item command sent");
+        var quantity = int.TryParse(SpawnItemQuantityText.Text, out var parsed) ? Math.Clamp(parsed, 1, 999) : 1;
+        SpawnItemQuantityText.Text = quantity.ToString();
+        SendDebugAction(new DevToolCommandPayload($"add_item|{ExtractCatalogId(SpawnItemCombo.Text)}", IntervalSeconds: quantity),
+            "Spawning selected item");
+    }
+
+    private void SpawnSelectedVehicle_Click(object sender, RoutedEventArgs e) =>
+        SendDebugAction(DebugAction("spawn_vehicle", ExtractCatalogId(SpawnVehicleCombo.Text)), "Spawning selected vehicle");
+
+    private static string ExtractCatalogId(string selection)
+    {
+        var open = selection.LastIndexOf('(');
+        var close = selection.LastIndexOf(')');
+        return open >= 0 && close > open
+            ? selection[(open + 1)..close].Trim()
+            : selection.Trim();
     }
 
     private void ClearInventory_Click(object sender, RoutedEventArgs e) =>

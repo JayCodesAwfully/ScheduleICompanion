@@ -19,7 +19,14 @@ public sealed record MixRecommendationPayload(string Product, string BaseProduct
     public string Combination => $"{BaseProduct} + {Ingredient}";
     public string DisplayPrice => $"${Price:N0}";
 }
-public sealed record DebugCatalogPayload(IReadOnlyList<string> Interfaces);
+public sealed record DebugCatalogPayload(
+    IReadOnlyList<string>? Interfaces,
+    IReadOnlyList<string>? LaunderingInterfaces,
+    IReadOnlyList<string>? TeleportDestinations,
+    IReadOnlyList<string>? SpawnItems,
+    IReadOnlyList<string>? SpawnVehicles,
+    IReadOnlyList<string>? People);
+public sealed record DebugInspectorPayload(string Title, IReadOnlyList<string> Lines);
 public sealed record OperationItemPayload(string Title, string Detail, string State);
 public sealed record OperationsSnapshotPayload(
     IReadOnlyList<ActiveOrderDetailPayload> Orders,

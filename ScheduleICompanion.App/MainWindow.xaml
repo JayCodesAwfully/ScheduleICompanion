@@ -704,6 +704,12 @@
                                     <TextBox x:Name="SetTimeText" Width="64" Margin="8,0,5,0" Text="1200"/>
                                     <Button Content="Set time" Click="SetTime_Click"/>
                                 </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <Button Content="Morning" Tag="0800" Click="TimePreset_Click"/>
+                                    <Button Content="Noon" Tag="1200" Click="TimePreset_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Evening" Tag="1800" Click="TimePreset_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Midnight" Tag="0000" Click="TimePreset_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
 
                                 <Separator Margin="0,12,0,10"/>
                                 <TextBlock Text="Dealer and game interfaces" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
@@ -720,19 +726,63 @@
                                     <Button Content="Talk to dealer" Click="OpenDealer_Click" Margin="6,0,0,0"/>
                                 </WrapPanel>
                                 <WrapPanel Margin="0,7,0,0">
-                                    <ComboBox x:Name="ShopDebugCombo" Width="210" IsEditable="True"
+                                    <ComboBox x:Name="ShopDebugCombo" Width="210" IsEditable="True" DropDownOpened="InterfaceCombo_DropDownOpened"
                                               ToolTip="Supported interfaces currently detected by the game"/>
                                     <Button Content="Open selected interface" Click="OpenShop_Click" Margin="6,0,0,0"/>
                                 </WrapPanel>
+                                <TextBlock Text="Laundering interfaces" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="0,10,0,0"/>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <ComboBox x:Name="LaunderingDebugCombo" Width="210" DropDownOpened="InterfaceCombo_DropDownOpened"
+                                              ToolTip="Laundering interfaces currently detected by the game"/>
+                                    <Button Content="Open laundering interface" Click="OpenLaundering_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="Teleport" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <ComboBox x:Name="TeleportDebugCombo" Width="300" IsEditable="True" IsTextSearchEnabled="True"
+                                              DropDownOpened="InterfaceCombo_DropDownOpened"/>
+                                    <Button Content="Teleport" Click="Teleport_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+
+                                <Separator Margin="0,12,0,10"/>
+                                <TextBlock Text="Targeted inspectors" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock Text="Plant actions affect the grow container currently under your crosshair."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,7"/>
+                                <WrapPanel>
+                                    <Button Content="Inspect plant" Click="InspectPlant_Click"/>
+                                    <Button Content="Next stage" Click="AdvancePlant_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Mature" Click="MaturePlant_Click" Margin="6,0,0,0"/>
+                                    <Button Content="Reset" Click="ResetPlant_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <ComboBox x:Name="PersonInspectorCombo" Width="300" IsEditable="True" IsTextSearchEnabled="True"
+                                              DropDownOpened="InterfaceCombo_DropDownOpened"/>
+                                    <Button Content="Inspect customer/dealer" Click="InspectPerson_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <Border Background="#141C18" BorderBrush="#34463B" BorderThickness="1" CornerRadius="3" Padding="9" Margin="0,8,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="InspectorTitleText" Text="Inspector results" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                        <TextBlock x:Name="InspectorResultText" Text="Choose an inspector action." Foreground="{StaticResource MutedBrush}"
+                                                   TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
 
                                 <Separator Margin="0,12,0,10"/>
                                 <TextBlock Text="Inventory and economy" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock Text="Spawn menu" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="0,7,0,0"/>
                                 <WrapPanel Margin="0,7,0,0">
-                                    <TextBox x:Name="ItemIdText" Width="150" ToolTip="Registry item ID, for example ogkush"/>
-                                    <TextBox x:Name="ItemQuantityText" Width="50" Margin="6,0,0,0" Text="1" ToolTip="Quantity"/>
-                                    <Button Content="Add item" Click="AddItem_Click" Margin="6,0,0,0"/>
-                                    <Button Content="Clear inventory" Click="ClearInventory_Click" Margin="6,0,0,0"/>
+                                    <ComboBox x:Name="SpawnItemCombo" Width="300" IsEditable="True" IsTextSearchEnabled="True"
+                                              DropDownOpened="InterfaceCombo_DropDownOpened" ToolTip="Search all registered game items"/>
+                                    <TextBox x:Name="SpawnItemQuantityText" Width="48" Margin="6,0,0,0" Text="1" ToolTip="Quantity"/>
+                                    <Button Content="Spawn item" Click="SpawnSelectedItem_Click" Margin="6,0,0,0"/>
                                 </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <ComboBox x:Name="SpawnVehicleCombo" Width="300" IsEditable="True" IsTextSearchEnabled="True"
+                                              DropDownOpened="InterfaceCombo_DropDownOpened" ToolTip="Search registered vehicle prefabs"/>
+                                    <Button Content="Spawn vehicle" Click="SpawnSelectedVehicle_Click" Margin="6,0,0,0"/>
+                                </WrapPanel>
+                                <Button Content="Clear inventory" Click="ClearInventory_Click" Margin="0,7,0,0" HorizontalAlignment="Left"/>
                                 <WrapPanel Margin="0,7,0,0">
                                     <TextBlock Text="Cash change" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
                                     <TextBox x:Name="CashChangeText" Width="80" Margin="6,0,5,0" Text="1000"/>
@@ -750,10 +800,8 @@
                                         <Button.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Header="Clear" Tag="clear" Click="WeatherType_Click"/>
-                                                <MenuItem Header="Rain" Tag="rain" Click="WeatherType_Click"/>
-                                                <MenuItem Header="Storm" Tag="storm" Click="WeatherType_Click"/>
-                                                <MenuItem Header="Fog" Tag="fog" Click="WeatherType_Click"/>
-                                                <MenuItem Header="Snow" Tag="snow" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Light Rain" Tag="lightrain" Click="WeatherType_Click"/>
+                                                <MenuItem Header="Heavy Rain" Tag="heavyrain" Click="WeatherType_Click"/>
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                     </Button>
