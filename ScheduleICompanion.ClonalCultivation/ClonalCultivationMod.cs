@@ -24,6 +24,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly Dictionary<string, ProductItemInstance> _qualityBySeed = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<long, (WeedDefinition Product, ProductItemInstance Template)> _cloneByPot = new();
     private readonly Dictionary<long, Pot> _trackedPots = new();
+    private readonly Dictionary<long, long> _clonePlantPointers = new();
     private readonly HashSet<long> _configuredClonePots = new();
     private readonly HashSet<string> _registeredSeeds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Guid> _processedPlantRequests = new();
@@ -80,6 +81,13 @@ public sealed class ClonalCultivationMod : MelonMod
             _status = "Plant key detected";
             LoggerInstance.Msg($"Plant key {_plantKey} detected.");
             TryPlantEquippedBud();
+        }
+        if (Input.GetKeyDown(KeyCode.F8) && _instantGrowEntry is not null)
+        {
+            _instantGrowEntry.Value = !_instantGrowEntry.Value;
+            MelonPreferences.Save();
+            _status = $"Instant Grow testing {(_instantGrowEntry.Value ? "enabled" : "disabled")}";
+            LoggerInstance.Msg($"{_status}. Press Insert while looking at a plant to activate it.");
         }
         if (_instantGrowEntry?.Value == true && Input.GetKeyDown(KeyCode.Insert)) TryInstantGrow();
     }
@@ -280,6 +288,7 @@ public sealed class ClonalCultivationMod : MelonMod
             var potKey = pot.Pointer.ToInt64();
             _cloneByPot[potKey] = (definition, plantedTemplate);
             _trackedPots[potKey] = pot;
+            if (pot.Plant is not null) _clonePlantPointers[potKey] = pot.Plant.Pointer.ToInt64();
         }
         var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         if (sender == LocalSteamId())
@@ -538,6 +547,7 @@ public sealed class ClonalCultivationMod : MelonMod
         _qualityBySeed[seedId] = template;
         _cloneByPot[potKey] = (product, template);
         _trackedPots[potKey] = pot;
+        _clonePlantPointers[potKey] = pot.Plant!.Pointer.ToInt64();
     }
 
     private static Pot? ResolveTargetPot(RaycastHit hit)
@@ -602,17 +612,35 @@ public sealed class ClonalCultivationMod : MelonMod
             var seedId = plant?.SeedDefinition?.ID;
             if (candidate is null) continue;
             var potKey = candidate.Pointer.ToInt64();
-            if (plant is null || string.IsNullOrWhiteSpace(seedId) ||
-                !_productsBySeed.TryGetValue(seedId, out var product) ||
-                !_qualityBySeed.TryGetValue(seedId, out var template))
+            if (plant is null)
             {
                 _trackedPots.Remove(potKey);
                 _cloneByPot.Remove(potKey);
+                _clonePlantPointers.Remove(potKey);
                 _configuredClonePots.Remove(potKey);
                 continue;
             }
+            var plantPointer = plant.Pointer.ToInt64();
+            if (_cloneByPot.ContainsKey(potKey))
+            {
+                if (_clonePlantPointers.TryGetValue(potKey, out var boundPointer) && boundPointer != plantPointer)
+                {
+                    _trackedPots.Remove(potKey);
+                    _cloneByPot.Remove(potKey);
+                    _clonePlantPointers.Remove(potKey);
+                    _configuredClonePots.Remove(potKey);
+                    continue;
+                }
+                _clonePlantPointers[potKey] = plantPointer;
+                _trackedPots[potKey] = candidate;
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(seedId) ||
+                !_productsBySeed.TryGetValue(seedId, out var product) ||
+                !_qualityBySeed.TryGetValue(seedId, out var template)) continue;
             _trackedPots[potKey] = candidate;
             _cloneByPot[potKey] = (product, template);
+            _clonePlantPointers[potKey] = plantPointer;
         }
         foreach (var entry in _trackedPots.ToArray())
         {
@@ -620,6 +648,8 @@ public sealed class ClonalCultivationMod : MelonMod
             if (pot is null)
             {
                 _trackedPots.Remove(entry.Key);
+                _cloneByPot.Remove(entry.Key);
+                _clonePlantPointers.Remove(entry.Key);
                 _configuredClonePots.Remove(entry.Key);
                 continue;
             }
