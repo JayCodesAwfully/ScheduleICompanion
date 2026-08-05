@@ -65,6 +65,10 @@ public sealed class InstallationService
         cancellationToken.ThrowIfCancellationRequested();
         var companionDirectory = Path.Combine(gameDirectory, "ScheduleICompanion");
         var modsDirectory = Path.Combine(gameDirectory, "Mods");
+        var installedBackpack = Path.Combine(modsDirectory, "ScheduleICompanion.Backpack.dll");
+        var installedCultivation = Path.Combine(modsDirectory, "ScheduleICompanion.ClonalCultivation.dll");
+        var backpackWasEnabled = File.Exists(installedBackpack);
+        var cultivationWasEnabled = File.Exists(installedCultivation);
         Directory.CreateDirectory(companionDirectory);
         Directory.CreateDirectory(modsDirectory);
 
@@ -74,18 +78,25 @@ public sealed class InstallationService
         File.Copy(
             Path.Combine(_payloadRoot, "Mods", "ScheduleICompanion.Mod.dll"),
             Path.Combine(modsDirectory, "ScheduleICompanion.Mod.dll"), true);
-        if (installBackpack)
+        if (installBackpack || backpackWasEnabled)
         {
             var backpack = Path.Combine(_payloadRoot, "Companion", "ModPackages", "ScheduleICompanion.Backpack.dll");
             if (!File.Exists(backpack)) throw new FileNotFoundException("The Backpack mod is missing from setup.", backpack);
-            progress.Report("Enabling the Personal Backpack mod...");
-            File.Copy(backpack, Path.Combine(modsDirectory, "ScheduleICompanion.Backpack.dll"), true);
+            progress.Report(backpackWasEnabled ? "Updating the enabled Backpack mod..." : "Enabling the Backpack mod...");
+            File.Copy(backpack, installedBackpack, true);
+        }
+        if (cultivationWasEnabled)
+        {
+            var cultivation = Path.Combine(_payloadRoot, "Companion", "ModPackages", "ScheduleICompanion.ClonalCultivation.dll");
+            if (!File.Exists(cultivation)) throw new FileNotFoundException("The Cultivation mod is missing from setup.", cultivation);
+            progress.Report("Updating the enabled Cultivation mod...");
+            File.Copy(cultivation, installedCultivation, true);
         }
 
         var manifest = new
         {
             product = "Schedule I Companion",
-            version = "1.7.4",
+            version = "1.7.7",
             installedAt = DateTimeOffset.Now,
             melonLoader = IsMelonLoaderInstalled(gameDirectory) ? MelonLoaderVersion : null,
             gameDirectory
@@ -113,9 +124,11 @@ public sealed class InstallationService
 
         var mod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.Mod.dll");
         var backpackMod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.Backpack.dll");
+        var cultivationMod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.ClonalCultivation.dll");
         var app = Path.Combine(gameDirectory, "ScheduleICompanion");
         if (File.Exists(mod)) File.Delete(mod);
         if (File.Exists(backpackMod)) File.Delete(backpackMod);
+        if (File.Exists(cultivationMod)) File.Delete(cultivationMod);
         if (Directory.Exists(app)) Directory.Delete(app, true);
         var shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Schedule I Companion.lnk");
         if (File.Exists(shortcut)) File.Delete(shortcut);
@@ -151,7 +164,8 @@ public sealed class InstallationService
         var app = Path.Combine(gameDirectory, "ScheduleICompanion");
         var mod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.Mod.dll");
         var backpackMod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.Backpack.dll");
-        if (!Directory.Exists(app) && !File.Exists(mod) && !File.Exists(backpackMod)) return;
+        var cultivationMod = Path.Combine(gameDirectory, "Mods", "ScheduleICompanion.ClonalCultivation.dll");
+        if (!Directory.Exists(app) && !File.Exists(mod) && !File.Exists(backpackMod) && !File.Exists(cultivationMod)) return;
         var backup = Path.Combine(gameDirectory, "ScheduleICompanion Backups", $"Installer-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}");
         Directory.CreateDirectory(backup);
         if (Directory.Exists(app)) CopyDirectory(app, Path.Combine(backup, "ScheduleICompanion"));
@@ -164,6 +178,11 @@ public sealed class InstallationService
         {
             Directory.CreateDirectory(Path.Combine(backup, "Mods"));
             File.Copy(backpackMod, Path.Combine(backup, "Mods", "ScheduleICompanion.Backpack.dll"), true);
+        }
+        if (File.Exists(cultivationMod))
+        {
+            Directory.CreateDirectory(Path.Combine(backup, "Mods"));
+            File.Copy(cultivationMod, Path.Combine(backup, "Mods", "ScheduleICompanion.ClonalCultivation.dll"), true);
         }
         progress.Report($"Backup created: {backup}");
     }

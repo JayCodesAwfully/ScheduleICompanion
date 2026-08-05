@@ -74,6 +74,8 @@ $InstalledMod = Join-Path $ModsDir 'ScheduleICompanion.Mod.dll'
 if (Test-Path $InstalledMod) { New-Item -ItemType Directory -Force -Path (Join-Path $BackupDir 'Mods') | Out-Null; Copy-Item $InstalledMod (Join-Path $BackupDir 'Mods\ScheduleICompanion.Mod.dll') -Force }
 $InstalledBackpackMod = Join-Path $ModsDir 'ScheduleICompanion.Backpack.dll'
 if (Test-Path $InstalledBackpackMod) { New-Item -ItemType Directory -Force -Path (Join-Path $BackupDir 'Mods') | Out-Null; Copy-Item $InstalledBackpackMod (Join-Path $BackupDir 'Mods\ScheduleICompanion.Backpack.dll') -Force }
+$InstalledCultivationMod = Join-Path $ModsDir 'ScheduleICompanion.ClonalCultivation.dll'
+if (Test-Path $InstalledCultivationMod) { New-Item -ItemType Directory -Force -Path (Join-Path $BackupDir 'Mods') | Out-Null; Copy-Item $InstalledCultivationMod (Join-Path $BackupDir 'Mods\ScheduleICompanion.ClonalCultivation.dll') -Force }
 Set-Content -Path (Join-Path $BackupRoot 'latest.txt') -Value $BackupDir
 
 Step 'Installing the companion application'
@@ -112,14 +114,23 @@ if ($GameRunning) {
         Copy-Item $BackpackDll (Join-Path $AppDir 'ScheduleICompanion.Backpack.pending-install.dll') -Force
         Write-Host 'Backpack update staged. Run this installer with the game closed to activate it.' -ForegroundColor Yellow
     }
+    $CultivationChanged = (Test-Path $InstalledCultivationMod) -and
+        ((Get-FileHash $ClonalCultivationDll -Algorithm SHA256).Hash -ne (Get-FileHash $InstalledCultivationMod -Algorithm SHA256).Hash)
+    if ($CultivationChanged) {
+        Copy-Item $ClonalCultivationDll (Join-Path $AppDir 'ScheduleICompanion.ClonalCultivation.pending-install.dll') -Force
+        Write-Host 'Cultivation update staged. Run this installer with the game closed to activate it.' -ForegroundColor Yellow
+    }
 }
 else {
     Copy-Item $ModDll $InstalledMod -Force
     Copy-Item $BackpackDll $InstalledBackpackMod -Force
+    if (Test-Path $InstalledCultivationMod) { Copy-Item $ClonalCultivationDll $InstalledCultivationMod -Force }
     $StagedMod = Join-Path $AppDir 'ScheduleICompanion.Mod.pending-install.dll'
     if (Test-Path $StagedMod) { Remove-Item $StagedMod -Force }
     $StagedBackpack = Join-Path $AppDir 'ScheduleICompanion.Backpack.pending-install.dll'
     if (Test-Path $StagedBackpack) { Remove-Item $StagedBackpack -Force }
+    $StagedCultivation = Join-Path $AppDir 'ScheduleICompanion.ClonalCultivation.pending-install.dll'
+    if (Test-Path $StagedCultivation) { Remove-Item $StagedCultivation -Force }
 }
 
 Step 'Starting the companion application'

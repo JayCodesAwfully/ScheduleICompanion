@@ -19,7 +19,7 @@
       "description": "Plant a created bud to grow a new plant based from it rather than a seed.",
       "dllName": "ScheduleICompanion.ClonalCultivation.dll",
       "downloadUrl": "bundled:ScheduleICompanion.ClonalCultivation.dll",
-      "sha256": "D34B1636385CFEF2EA79C57CE2C1978DA25A0033CB40E14D9468693440DC1803",
+      "sha256": "BE854C038314D99CECBFDEE32A3E7677F03D21976B369D4310C6EB76BC05876A",
       "experimental": true,
       "multiplayerPolicy": "host-and-owner-required"
     }

@@ -26,7 +26,13 @@ try
         ["Backpack enabled"] = File.Exists(Path.Combine(game, "Mods", "ScheduleICompanion.Backpack.dll")),
         ["Manifest installed"] = File.Exists(Path.Combine(game, "ScheduleICompanion", "install-manifest.json"))
     };
+    var cultivationPackage = Path.Combine(game, "ScheduleICompanion", "ModPackages", "ScheduleICompanion.ClonalCultivation.dll");
+    var cultivationInstalled = Path.Combine(game, "Mods", "ScheduleICompanion.ClonalCultivation.dll");
+    File.Copy(cultivationPackage, cultivationInstalled, true);
+    await File.AppendAllTextAsync(cultivationInstalled, "stale enabled cultivation fixture");
     await service.InstallAsync(game, installMelonLoader: false, createDesktopShortcut: false, progress, CancellationToken.None);
+    checks["Enabled Cultivation updated"] = File.ReadAllBytes(cultivationInstalled)
+        .SequenceEqual(File.ReadAllBytes(cultivationPackage));
     checks["Repair backup created"] = Directory.Exists(Path.Combine(game, "ScheduleICompanion Backups")) &&
                                       Directory.GetDirectories(Path.Combine(game, "ScheduleICompanion Backups"), "Installer-*").Length > 0;
     service.UninstallCompanion(game, progress);
