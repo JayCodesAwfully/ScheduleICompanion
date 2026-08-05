@@ -307,15 +307,32 @@ public sealed class ClonalCultivationMod : MelonMod
             SendPlantResult(sender, request.RequestId, false, "The host could not resolve your player");
             return;
         }
-        var equipped = request.InventorySlot >= 0 && request.InventorySlot < player._inventory.Length
-            ? player._inventory[request.InventorySlot].ItemInstance?.TryCast<ProductItemInstance>()
-            : null;
-        var definition = equipped?.Definition?.TryCast<WeedDefinition>();
-        if (equipped is null || definition is null ||
-            !definition.ID.Equals(request.ProductId, StringComparison.OrdinalIgnoreCase) ||
-            (int)equipped.Quality != request.Quality)
+        ProductItemInstance? equipped = null;
+        WeedDefinition? definition = null;
+        var verifiedSlot = -1;
+        var slotOrder = Enumerable.Range(0, player._inventory.Length)
+            .OrderBy(index => index == request.InventorySlot ? 0 : 1);
+        foreach (var index in slotOrder)
         {
-            SendPlantResult(sender, request.RequestId, false, "The host could not verify your equipped bud");
+            var candidate = player._inventory[index].ItemInstance?.TryCast<ProductItemInstance>();
+            var candidateDefinition = candidate?.Definition?.TryCast<WeedDefinition>();
+            if (candidate is null || candidateDefinition is null ||
+                !candidateDefinition.ID.Equals(request.ProductId, StringComparison.OrdinalIgnoreCase) ||
+                (int)candidate.Quality != request.Quality) continue;
+            equipped = candidate;
+            definition = candidateDefinition;
+            verifiedSlot = index;
+            break;
+        }
+        if (equipped is null || definition is null || verifiedSlot < 0)
+        {
+            var visibleProducts = player._inventory
+                .Select((slot, index) => (index, item: slot.ItemInstance?.TryCast<ProductItemInstance>()))
+                .Where(entry => entry.item is not null)
+                .Select(entry => $"{entry.index}:{entry.item!.Definition?.ID ?? "unknown"}/{entry.item.Quality}");
+            LoggerInstance.Warning($"Remote bud verification failed for {request.ProductId}/{request.Quality} " +
+                                   $"at reported slot {request.InventorySlot}; host inventory: {string.Join(", ", visibleProducts)}");
+            SendPlantResult(sender, request.RequestId, false, "The host could not find that bud in your inventory");
             return;
         }
 
@@ -334,7 +351,7 @@ public sealed class ClonalCultivationMod : MelonMod
             SendPlantResult(sender, request.RequestId, false, "You are too far from the targeted pot");
             return;
         }
-        PlantOnHost(sender, pot, player, definition, equipped, request.InventorySlot, request.RequestId);
+        PlantOnHost(sender, pot, player, definition, equipped, verifiedSlot, request.RequestId);
     }
 
     private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail)
