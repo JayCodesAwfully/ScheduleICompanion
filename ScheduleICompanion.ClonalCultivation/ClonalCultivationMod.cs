@@ -43,7 +43,6 @@ public sealed class ClonalCultivationMod : MelonMod
     private bool _registryStateLogged;
     private float _nextRegistryRefresh;
     private float _nextTraitUpdate;
-    private float _nextHostGrowthSync;
     private float _nextCloneIdentitySync;
     private const float CloneGrowthTimeMultiplier = 1.3f;
     private string _status = "Hold a created weed bud, look at an empty pot, and press P";
@@ -609,32 +608,50 @@ public sealed class ClonalCultivationMod : MelonMod
         var camera = PlayerCamera.Instance?.Camera ?? Camera.main;
         if (camera is null) return;
         var ray = new Ray(camera.transform.position, camera.transform.forward);
-        if (!Physics.Raycast(ray, out var hit, 5f))
+        var hits = Physics.RaycastAll(ray, 6f).OrderBy(hit => hit.distance).ToArray();
+        var pot = hits.Select(ResolveGrowingPot).FirstOrDefault(candidate => candidate?.Plant is not null);
+        if (pot is null)
         {
-            _status = "Look directly at a plant and press Insert";
-            ShowNotice(_status);
-            return;
+            pot = UnityEngine.Object.FindObjectsOfType<Pot>()
+                .Where(candidate => candidate?.Plant is not null)
+                .Select(candidate => new
+                {
+                    Pot = candidate,
+                    AlongRay = Vector3.Dot(candidate.transform.position - ray.origin, ray.direction),
+                    Distance = Vector3.Cross(ray.direction,
+                        candidate.transform.position - ray.origin).magnitude
+                })
+                .Where(candidate => candidate.AlongRay > 0f && candidate.AlongRay < 6.5f && candidate.Distance < 1.1f)
+                .OrderBy(candidate => candidate.Distance + candidate.AlongRay * 0.02f)
+                .Select(candidate => candidate.Pot)
+                .FirstOrDefault();
         }
-
-        var plant = hit.collider?.GetComponentInParent<Plant>();
-        if (plant is null && hit.collider?.transform.root is { } root)
+        if (pot?.Plant is null)
         {
-            var candidates = root.GetComponentsInChildren<Plant>(true);
-            plant = candidates.OrderBy(candidate =>
-                Vector3.SqrMagnitude(candidate.transform.position - hit.point)).FirstOrDefault();
-        }
-        if (plant?.Pot is null)
-        {
-            _status = "No plant found in that grow container";
+            _status = "No growing plant found near the crosshair";
             LoggerInstance.Msg(_status);
             ShowNotice(_status);
             return;
         }
 
-        plant.Pot.SetGrowthProgress_Server(1f);
+        pot.SetGrowthProgress_Server(1f);
         _status = "Target plant set to full growth";
         LoggerInstance.Msg(_status);
         ShowNotice(_status);
+    }
+
+    private static Pot? ResolveGrowingPot(RaycastHit hit)
+    {
+        var collider = hit.collider;
+        if (collider is null || collider.GetComponentInParent<Player>() is not null) return null;
+        var direct = collider.GetComponentInParent<Pot>();
+        if (direct?.Plant is not null) return direct;
+        var root = collider.transform.root;
+        if (root is null) return null;
+        return root.GetComponentsInChildren<Pot>(true)
+            .Where(candidate => candidate?.Plant is not null)
+            .OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - hit.point))
+            .FirstOrDefault();
     }
 
     private void UpdateClonePlantTraits()
@@ -699,19 +716,6 @@ public sealed class ClonalCultivationMod : MelonMod
             }
         }
 
-        // Clone duration is modified locally on each peer, but minute ticks can be
-        // observed on different frames. Reuse the game's own observer RPC so the
-        // host remains authoritative and every co-op client displays the same
-        // normalized progress and completion point.
-        if (IsHost() && Time.unscaledTime >= _nextHostGrowthSync)
-        {
-            _nextHostGrowthSync = Time.unscaledTime + 1f;
-            foreach (var pot in _trackedPots.Values)
-            {
-                if (pot?.Plant is null) continue;
-                pot.SetGrowthProgress_Server(pot.GetGrowthProgressNormalized());
-            }
-        }
     }
 
     private static string SeedId(string productId)
