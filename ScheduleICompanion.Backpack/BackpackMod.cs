@@ -30,6 +30,7 @@ public sealed class BackpackMod : MelonMod
     private BackpackState? _state;
     private bool _menuOpen;
     private bool _waitingForHost;
+    private float _nextHostSyncRetry;
     private bool _sessionVerified;
     private string _status = "Ready";
     private Vector2 _inventoryScroll;
@@ -73,6 +74,11 @@ public sealed class BackpackMod : MelonMod
         MaintainNativeStorageMenu();
         EnsureSaveCheckpointHook();
         TryStartBackpackSave();
+        if (_waitingForHost && IsMultiplayerClient() && Time.unscaledTime >= _nextHostSyncRetry)
+        {
+            _nextHostSyncRetry = Time.unscaledTime + 2f;
+            SendHello();
+        }
 
         if (Input.GetKeyDown(_openKey))
         {
@@ -391,6 +397,7 @@ public sealed class BackpackMod : MelonMod
         if (IsMultiplayerClient())
         {
             _waitingForHost = true;
+            _nextHostSyncRetry = Time.unscaledTime + 2f;
             _status = "Waiting for the host snapshot";
             SendHello();
         }
@@ -458,12 +465,10 @@ public sealed class BackpackMod : MelonMod
     private void NativeStorageClosed()
     {
         if (_nativeStorage is null || _state is null) return;
-        var slots = _nativeStorage.ItemSlots;
-        for (var i = 0; i < 12; i++)
-            _state.Slots[i] = i < slots.Count && slots[i].ItemInstance is { } item ? SerializeItem(item) : "";
-        _state.Revision++;
+        // The native storage object is only a UI mirror. Host-authorized transfers
+        // already update _state, so closing must not manufacture a newer client
+        // revision that can overwrite a concurrent host snapshot.
         StageState(_state);
-        SyncStateWithHost();
         _waitingForHost = false;
         _status = "Closing Backpack and saving game...";
         RestoreSharedStorageMenu();
@@ -567,6 +572,13 @@ public sealed class BackpackMod : MelonMod
                 RequestTransfer("withdraw", inventoryTarget, backpackSource, null);
             }
         }
+        else if (backpackSource >= 0 && backpackTarget >= 0 && backpackSource != backpackTarget)
+        {
+            if (target.ItemInstance is not null)
+                _status = "Choose an empty Backpack slot";
+            else
+                RequestTransfer("move", backpackTarget, backpackSource, source.ItemInstance);
+        }
 
         PopulateNativeStorage();
     }
@@ -633,6 +645,24 @@ public sealed class BackpackMod : MelonMod
     [HarmonyPatch(typeof(ItemUIManager), "EndDrag")]
     private static class NativeBackpackRefreshPatch
     {
+        private static bool Prefix(ItemUIManager __instance)
+        {
+            var active = ActiveInstance;
+            if (active?._nativeStorage is null || __instance.draggedSlot?.assignedSlot is null ||
+                __instance.HoveredSlot?.assignedSlot is null) return true;
+            var sourceIsBackpack = active.OwnsNativeSlot(__instance.draggedSlot.assignedSlot);
+            var targetIsBackpack = active.OwnsNativeSlot(__instance.HoveredSlot.assignedSlot);
+            if (!sourceIsBackpack && !targetIsBackpack) return true;
+            active.HandleNativeDrop(__instance);
+            if (__instance.tempIcon is not null)
+                UnityEngine.Object.Destroy(__instance.tempIcon.gameObject);
+            __instance.tempIcon = null;
+            __instance.draggedSlot = null;
+            __instance.draggedAmount = 0;
+            __instance.isDraggingCash = false;
+            return false;
+        }
+
         private static void Postfix()
         {
             var instance = ActiveInstance;
@@ -665,6 +695,7 @@ public sealed class BackpackMod : MelonMod
         if (IsMultiplayerClient())
         {
             _waitingForHost = true;
+            _nextHostSyncRetry = Time.unscaledTime + 2f;
             _status = "Waiting for the host snapshot";
             if (!SendHello())
             {
@@ -723,6 +754,7 @@ public sealed class BackpackMod : MelonMod
         };
 
         _waitingForHost = true;
+        _nextHostSyncRetry = Time.unscaledTime + 2f;
         _status = "Waiting for host confirmation…";
         if (IsMultiplayerClient())
         {
@@ -739,7 +771,7 @@ public sealed class BackpackMod : MelonMod
         var local = LocalSteamId();
         if (message.Recipient != 0 && message.Recipient != local) return;
 
-        if (IsHost() && message.Type is "hello" or "sync" or "deposit" or "withdraw")
+        if (IsHost() && message.Type is "hello" or "sync" or "deposit" or "withdraw" or "move")
         {
             ProcessHostRequest(sender, message);
             return;
@@ -794,6 +826,8 @@ public sealed class BackpackMod : MelonMod
         {
             if (request.Type == "deposit") Deposit(state, player, request);
             else if (request.Type == "withdraw") Withdraw(state, player, request);
+            else if (request.Type == "move") MoveWithinBackpack(state, request);
+            else throw new InvalidOperationException("Unsupported Backpack operation");
             SendResult(sender, request.RequestId, true, "Transfer committed", state);
         }
         catch (Exception ex)
@@ -854,6 +888,24 @@ public sealed class BackpackMod : MelonMod
         inventory[destination].SetStoredItem(item, true);
         journal.Phase = "committed";
         TrimJournal(state);
+        StageState(state);
+    }
+
+    private void MoveWithinBackpack(BackpackState state, BackpackMessage request)
+    {
+        var source = request.BackpackSlot;
+        var destination = request.InventorySlot;
+        if (source < 0 || source >= state.Slots.Length || destination < 0 || destination >= state.Slots.Length)
+            throw new InvalidOperationException("Invalid Backpack slot");
+        var json = state.Slots[source];
+        if (string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("That Backpack slot is now empty");
+        if (!string.IsNullOrWhiteSpace(state.Slots[destination]))
+            throw new InvalidOperationException("The destination Backpack slot is not empty");
+        if (!Fingerprint(json).Equals(request.Fingerprint, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The Backpack item changed before the host received the move");
+        state.Slots[source] = "";
+        state.Slots[destination] = json;
+        state.Revision++;
         StageState(state);
     }
 
