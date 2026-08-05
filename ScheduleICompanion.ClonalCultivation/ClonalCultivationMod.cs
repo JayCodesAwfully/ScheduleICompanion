@@ -30,6 +30,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly HashSet<Guid> _completedPlantRequests = new();
     private readonly HashSet<Guid> _pendingPlantRequests = new();
     private readonly Dictionary<Guid, PendingPlantResult> _pendingPlantResults = new();
+    private PendingHarvest? _pendingHarvest;
     private MelonPreferences_Entry<string>? _plantKeyEntry;
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
     private KeyCode _plantKey = KeyCode.P;
@@ -281,14 +282,13 @@ public sealed class ClonalCultivationMod : MelonMod
             _trackedPots[potKey] = pot;
         }
         var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
-        // Use the game's server-issued observer RPC for both host and remote owners.
-        // This is the same authoritative path used when the equipped item is consumed
-        // normally and correctly removes the final ItemInstance from every peer.
-        player.RemoveEquippedItemFromInventory(definition.ID, 1);
+        if (sender == LocalSteamId())
+            ConsumeOneFromSlot(player._inventory[hostSlotIndex]);
         var quantityAfter = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
-        SendPlantResult(sender, requestId, true, _status, clientSlotIndex, definition.ID, (int)weed.Quality, false);
+        SendPlantResult(sender, requestId, true, _status, clientSlotIndex, definition.ID, (int)weed.Quality,
+            sender != LocalSteamId());
     }
 
     private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
@@ -401,7 +401,7 @@ public sealed class ClonalCultivationMod : MelonMod
             if (item is null || definition is null ||
                 !definition.ID.Equals(message.ProductId, StringComparison.OrdinalIgnoreCase) ||
                 (int)item.Quality != message.Quality) continue;
-            ConsumeOneFromSlot(player._inventory[index]);
+            ConsumeOneFromNetworkedSlot(player, index);
             LoggerInstance.Msg($"Consumed host-authorized bud from local slot {index}.");
             return;
         }
@@ -419,6 +419,23 @@ public sealed class ClonalCultivationMod : MelonMod
             slot.ClearStoredInstance(true);
         else
             slot.ChangeQuantity(-1, true);
+    }
+
+    private static void ConsumeOneFromNetworkedSlot(Player player, int index)
+    {
+        var slot = player._inventory[index];
+        var item = slot.ItemInstance;
+        if (item is null) return;
+        var remaining = item.GetTotalAmount() - 1;
+        if (remaining <= 0)
+        {
+            slot.ClearStoredInstance(false);
+            player.SetInventoryItem(index, null!);
+            return;
+        }
+        var replacement = item.GetCopy(remaining);
+        slot.SetStoredItem(replacement, false);
+        player.SetInventoryItem(index, replacement);
     }
 
     private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail,
@@ -671,6 +688,8 @@ public sealed class ClonalCultivationMod : MelonMod
         if (potKey != 0 && _cloneByPot.TryGetValue(potKey, out var plantedClone))
         {
             var copiedHarvest = CreatePreservedHarvest(plantedClone.Product, plantedClone.Template, quantity);
+            _pendingHarvest = new PendingHarvest(plantedClone.Product, plantedClone.Template, quantity,
+                Time.unscaledTime + 2f);
             LoggerInstance.Msg($"Harvested {quantity}x {plantedClone.Product.Name} at preserved quality {plantedClone.Template.Quality}.");
             return copiedHarvest;
         }
@@ -682,6 +701,7 @@ public sealed class ClonalCultivationMod : MelonMod
         if (_qualityBySeed.TryGetValue(seedId, out var qualityTemplate))
         {
             var copiedHarvest = CreatePreservedHarvest(product, qualityTemplate, quantity);
+            _pendingHarvest = new PendingHarvest(product, qualityTemplate, quantity, Time.unscaledTime + 2f);
             LoggerInstance.Msg($"Harvested {quantity}x {product.Name} at preserved quality {qualityTemplate.Quality}.");
             return copiedHarvest;
         }
@@ -699,6 +719,21 @@ public sealed class ClonalCultivationMod : MelonMod
         return new ProductItemInstance(product, quantity, plantedTemplate.Quality,
             plantedTemplate.AppliedPackaging);
     }
+
+    private ItemInstance PreservePendingHarvestAtInventory(ItemInstance original)
+    {
+        var pending = _pendingHarvest;
+        if (pending is null || Time.unscaledTime > pending.ExpiresAt) return original;
+        if (original.Definition?.ID?.Equals("ogkush", StringComparison.OrdinalIgnoreCase) != true) return original;
+        var quantity = original.GetTotalAmount();
+        if (quantity != pending.Quantity) return original;
+        _pendingHarvest = null;
+        LoggerInstance.Msg($"Replaced native OG Kush inventory award with {pending.Product.Name} ({pending.Template.Quality}).");
+        return CreatePreservedHarvest(pending.Product, pending.Template, quantity);
+    }
+
+    private sealed record PendingHarvest(
+        WeedDefinition Product, ProductItemInstance Template, int Quantity, float ExpiresAt);
 
     private static Player? ResolvePlayer(ulong steamId)
     {
@@ -749,6 +784,17 @@ public sealed class ClonalCultivationMod : MelonMod
             var weedPlant = __instance.TryCast<WeedPlant>();
             if (weedPlant is not null)
                 __result = Active?.ReplaceHarvest(weedPlant, quantity, __result) ?? __result;
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerInventory), "AddItemToInventory")]
+    private static class HarvestInventoryPatch
+    {
+        [HarmonyPriority(HarmonyLib.Priority.First)]
+        private static void Prefix(ref ItemInstance __0)
+        {
+            if (Active is not null)
+                __0 = Active.PreservePendingHarvestAtInventory(__0);
         }
     }
 
