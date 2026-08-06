@@ -9,7 +9,7 @@ namespace ScheduleICompanion.ClonalCultivation;
 
 internal sealed class CultivationMessage
 {
-    public string Protocol { get; set; } = "2";
+    public string Protocol { get; set; } = "3";
     public string Type { get; set; } = "plant";
     public Guid RequestId { get; set; }
     public ulong Recipient { get; set; }
@@ -18,6 +18,9 @@ internal sealed class CultivationMessage
     public int Quality { get; set; }
     public int InventorySlot { get; set; } = -1;
     public int PotObjectId { get; set; } = -1;
+    public string SoilId { get; set; } = "";
+    public float SoilAmount { get; set; }
+    public int RemainingSoilUses { get; set; }
     public float PotX { get; set; }
     public float PotY { get; set; }
     public float PotZ { get; set; }

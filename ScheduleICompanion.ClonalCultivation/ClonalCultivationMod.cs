@@ -25,6 +25,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly Dictionary<string, ProductItemInstance> _qualityBySeed = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<long, (WeedDefinition Product, ProductItemInstance Template)> _cloneByPot = new();
     private readonly Dictionary<long, Pot> _trackedPots = new();
+    private readonly Dictionary<int, Pot> _potsByNetworkId = new();
     private readonly Dictionary<long, long> _clonePlantPointers = new();
     private readonly HashSet<long> _configuredClonePots = new();
     private readonly HashSet<string> _registeredSeeds = new(StringComparer.OrdinalIgnoreCase);
@@ -228,13 +229,7 @@ public sealed class ClonalCultivationMod : MelonMod
             }
         }
         var ray = new Ray(camera.transform.position, camera.transform.forward);
-        var hits = Physics.RaycastAll(ray, 5f).OrderBy(hit => hit.distance).ToArray();
-        if (hits.Length == 0)
-        {
-            _status = "Look directly at an empty prepared pot";
-            LoggerInstance.Msg(_status);
-            return;
-        }
+        var hits = Physics.RaycastAll(ray, 6.5f).OrderBy(hit => hit.distance).ToArray();
         Pot? pot = null;
         RaycastHit? firstWorldHit = null;
         foreach (var candidateHit in hits)
@@ -245,13 +240,14 @@ public sealed class ClonalCultivationMod : MelonMod
             pot = ResolveTargetPot(candidateHit);
             if (pot is not null) break;
         }
+        pot ??= FindPotNearCrosshair(ray, 7f, 1.15f);
         if (pot is null)
         {
             _status = $"No plantable pot found inside {firstWorldHit?.collider?.name ?? "the aimed object"}";
             LoggerInstance.Msg(_status);
             return;
         }
-        if (!pot.CanAcceptSeed(out var reason))
+        if (!IsMultiplayerClient() && !pot.CanAcceptSeed(out var reason))
         {
             _status = string.IsNullOrWhiteSpace(reason) ? "That pot cannot accept a plant" : reason;
             return;
@@ -275,6 +271,9 @@ public sealed class ClonalCultivationMod : MelonMod
                 Quality = (int)weed.Quality,
                 InventorySlot = slotIndex,
                 PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
+                SoilId = pot.CurrentSoil?.ID ?? "",
+                SoilAmount = pot._currentSoilAmount,
+                RemainingSoilUses = pot._remainingSoilUses,
                 PotX = pot.transform.position.x,
                 PotY = pot.transform.position.y,
                 PotZ = pot.transform.position.z
@@ -334,6 +333,9 @@ public sealed class ClonalCultivationMod : MelonMod
                 ProductDataJson = JsonUtility.ToJson(definition.GetSaveData()),
                 Quality = (int)weed.Quality,
                 PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
+                SoilId = pot.CurrentSoil?.ID ?? "",
+                SoilAmount = pot._currentSoilAmount,
+                RemainingSoilUses = pot._remainingSoilUses,
                 PotX = pot.transform.position.x,
                 PotY = pot.transform.position.y,
                 PotZ = pot.transform.position.z
@@ -397,7 +399,7 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
     {
-        if (message.Protocol != "2") return;
+        if (message.Protocol != "3") return;
         if (message.Type == "plant" && IsHost())
         {
             ProcessHostPlantRequest(sender, message);
@@ -417,6 +419,11 @@ public sealed class ClonalCultivationMod : MelonMod
         if (message.Type == "clone-prepare" && senderIsHost && !IsHost())
         {
             PrepareRemoteClone(message);
+            return;
+        }
+        if (message.Type == "soil-sync" && senderIsHost && !IsHost())
+        {
+            ApplyRemoteSoilState(message);
             return;
         }
         if (message.Type == "result" && senderIsHost &&
@@ -640,6 +647,7 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private void PrepareRemoteClone(CultivationMessage message)
     {
+        ApplyRemoteSoilState(message);
         if (string.IsNullOrWhiteSpace(message.ProductId) || !Enum.IsDefined(typeof(EQuality), message.Quality)) return;
         var product = ResolveOrImportRemoteProduct(message);
         if (product is null)
@@ -649,6 +657,49 @@ public sealed class ClonalCultivationMod : MelonMod
         }
         EnsureCloneSeed(product, (EQuality)message.Quality);
         LoggerInstance.Msg($"Prepared remote clone seed {SeedId(product.ID, message.Quality)} before planting.");
+    }
+
+    private static void SendSoilState(Pot pot)
+    {
+        if (pot?.CurrentSoil is null || pot._currentSoilAmount <= 0f) return;
+        CultivationProtocol.Send(new CultivationMessage
+        {
+            Type = "soil-sync",
+            PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
+            SoilId = pot.CurrentSoil.ID,
+            SoilAmount = pot._currentSoilAmount,
+            RemainingSoilUses = pot._remainingSoilUses,
+            PotX = pot.transform.position.x,
+            PotY = pot.transform.position.y,
+            PotZ = pot.transform.position.z
+        });
+    }
+
+    private void ApplyRemoteSoilState(CultivationMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.SoilId) || message.SoilAmount <= 0f) return;
+        var soil = Registry.GetItem<SoilDefinition>(message.SoilId);
+        if (soil is null) return;
+        var position = new Vector3(message.PotX, message.PotY, message.PotZ);
+        Pot? pot = null;
+        if (message.PotObjectId >= 0)
+            _potsByNetworkId.TryGetValue(message.PotObjectId, out pot);
+        if (pot is null)
+        {
+            var pots = UnityEngine.Object.FindObjectsOfType<Pot>();
+            foreach (var candidate in pots)
+                if (candidate?.NetworkObject is not null)
+                    _potsByNetworkId[candidate.NetworkObject.ObjectId] = candidate;
+            pot = message.PotObjectId >= 0
+                ? pots.FirstOrDefault(candidate => candidate?.NetworkObject?.ObjectId == message.PotObjectId)
+                : null;
+            pot ??= pots.OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - position)).FirstOrDefault();
+        }
+        if (pot is null || Vector3.SqrMagnitude(pot.transform.position - position) > 2.25f) return;
+        pot.SetSoil(soil);
+        pot.SetSoilAmount(message.SoilAmount);
+        pot.SetRemainingSoilUses(Math.Max(0, message.RemainingSoilUses));
+        pot.RefreshSoilVisuals();
     }
 
     private static bool IsMultiplayerSession()
@@ -733,13 +784,30 @@ public sealed class ClonalCultivationMod : MelonMod
         var nearestDistance = float.MaxValue;
         foreach (var candidate in root.GetComponentsInChildren<Pot>(true))
         {
-            if (candidate is null || !candidate.CanAcceptSeed(out _)) continue;
+            if (candidate is null) continue;
             var distance = Vector3.SqrMagnitude(candidate.transform.position - hit.point);
             if (distance >= nearestDistance) continue;
             nearest = candidate;
             nearestDistance = distance;
         }
         return nearest;
+    }
+
+    private static Pot? FindPotNearCrosshair(Ray ray, float maxDistance, float corridorRadius)
+    {
+        return UnityEngine.Object.FindObjectsOfType<Pot>()
+            .Where(candidate => candidate is not null)
+            .Select(candidate => new
+            {
+                Pot = candidate,
+                AlongRay = Vector3.Dot(candidate.transform.position - ray.origin, ray.direction),
+                Distance = Vector3.Cross(ray.direction, candidate.transform.position - ray.origin).magnitude
+            })
+            .Where(candidate => candidate.AlongRay > 0f && candidate.AlongRay <= maxDistance &&
+                                candidate.Distance <= corridorRadius)
+            .OrderBy(candidate => candidate.Distance + candidate.AlongRay * 0.015f)
+            .Select(candidate => candidate.Pot)
+            .FirstOrDefault();
     }
 
     private void TryInstantGrow()
@@ -803,6 +871,9 @@ public sealed class ClonalCultivationMod : MelonMod
             foreach (var candidate in UnityEngine.Object.FindObjectsOfType<Pot>())
             {
                 if (candidate is null) continue;
+                if (candidate.NetworkObject is not null)
+                    _potsByNetworkId[candidate.NetworkObject.ObjectId] = candidate;
+                if (IsHost()) SendSoilState(candidate);
                 var plant = candidate.Plant;
                 var potKey = candidate.Pointer.ToInt64();
                 if (plant is null)
