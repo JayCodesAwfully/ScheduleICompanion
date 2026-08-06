@@ -33,6 +33,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly HashSet<Guid> _completedPlantRequests = new();
     private readonly HashSet<Guid> _pendingPlantRequests = new();
     private readonly Dictionary<Guid, PendingPlantResult> _pendingPlantResults = new();
+    private readonly List<PendingHostPlant> _pendingHostPlants = new();
     private PendingHarvest? _pendingHarvest;
     private MelonPreferences_Entry<string>? _plantKeyEntry;
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
@@ -61,6 +62,10 @@ public sealed class ClonalCultivationMod : MelonMod
         ParsePlantKey();
         CultivationProtocol.Received += OnProtocolMessage;
         HarmonyInstance.PatchAll(typeof(ClonalCultivationMod).Assembly);
+        // Stagger the two broad discovery passes so they never land on the same frame.
+        // Planting itself still performs an immediate targeted registration/lookup.
+        _nextRegistryRefresh = Time.unscaledTime + 8f;
+        _nextPotDiscovery = Time.unscaledTime + 23f;
         LoggerInstance.Msg($"Cultivation initialized. Hold a created weed bud, look at an empty pot, and press {_plantKey}.");
     }
 
@@ -69,13 +74,14 @@ public sealed class ClonalCultivationMod : MelonMod
     public override void OnUpdate()
     {
         UpdateClonePlantTraits();
+        CompletePendingHostPlants();
         RetryPendingPlantResults();
         BroadcastCloneIdentities();
         if (_plantKeyEntry is not null && !_plantKeyEntry.Value.Equals(_plantKey.ToString(), StringComparison.OrdinalIgnoreCase))
             ParsePlantKey();
         if (Time.unscaledTime >= _nextRegistryRefresh)
         {
-            _nextRegistryRefresh = Time.unscaledTime + 30f;
+            _nextRegistryRefresh = Time.unscaledTime + 120f;
             EnsureCloneSeeds();
         }
         var plantKeyDown = Input.GetKeyDown(_plantKey) || (Input.GetKey(_plantKey) && !_plantKeyHeld);
@@ -268,6 +274,7 @@ public sealed class ClonalCultivationMod : MelonMod
                 ProductDataJson = JsonUtility.ToJson(definition.GetSaveData()),
                 Quality = (int)weed.Quality,
                 InventorySlot = slotIndex,
+                PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
                 PotX = pot.transform.position.x,
                 PotY = pot.transform.position.y,
                 PotZ = pot.transform.position.z
@@ -318,6 +325,54 @@ public sealed class ClonalCultivationMod : MelonMod
             }
         }
 
+        if (IsMultiplayerSession())
+        {
+            CultivationProtocol.Send(new CultivationMessage
+            {
+                Type = "clone-prepare",
+                ProductId = definition.ID,
+                ProductDataJson = JsonUtility.ToJson(definition.GetSaveData()),
+                Quality = (int)weed.Quality,
+                PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
+                PotX = pot.transform.position.x,
+                PotY = pot.transform.position.y,
+                PotZ = pot.transform.position.z
+            });
+            if (_pendingHostPlants.Any(entry => entry.Pot.Pointer == pot.Pointer))
+            {
+                SendPlantResult(sender, requestId, false, "That pot already has a planting request in progress");
+                return;
+            }
+            _pendingHostPlants.Add(new PendingHostPlant(sender, pot, player, definition, weed,
+                hostSlotIndex, clientSlotIndex, requestId, Time.unscaledTime + 0.75f));
+            return;
+        }
+
+        CompletePlantOnHost(sender, pot, player, definition, weed, hostSlotIndex, clientSlotIndex, requestId);
+    }
+
+    private void CompletePendingHostPlants()
+    {
+        if (!IsHost() || _pendingHostPlants.Count == 0) return;
+        foreach (var pending in _pendingHostPlants.Where(entry => Time.unscaledTime >= entry.ExecuteAt).ToArray())
+        {
+            _pendingHostPlants.Remove(pending);
+            var reason = "";
+            if (pending.Pot is null || !pending.Pot.CanAcceptSeed(out reason))
+            {
+                SendPlantResult(pending.Sender, pending.RequestId, false,
+                    string.IsNullOrWhiteSpace(reason) ? "That pot can no longer accept a plant" : reason);
+                continue;
+            }
+            CompletePlantOnHost(pending.Sender, pending.Pot, pending.Player, pending.Definition,
+                pending.Weed, pending.HostSlotIndex, pending.ClientSlotIndex, pending.RequestId);
+        }
+    }
+
+    private void CompletePlantOnHost(ulong sender, Pot pot, Player player, WeedDefinition definition,
+        ProductItemInstance weed, int hostSlotIndex, int clientSlotIndex, Guid requestId)
+    {
+        var seedId = SeedId(definition.ID, (int)weed.Quality);
         pot.PlantSeed_Server(seedId, 0f);
         if (_qualityBySeed.TryGetValue(seedId, out var plantedTemplate))
         {
@@ -337,9 +392,12 @@ public sealed class ClonalCultivationMod : MelonMod
             sender != LocalSteamId());
     }
 
+    private sealed record PendingHostPlant(ulong Sender, Pot Pot, Player Player, WeedDefinition Definition,
+        ProductItemInstance Weed, int HostSlotIndex, int ClientSlotIndex, Guid RequestId, float ExecuteAt);
+
     private void OnProtocolMessage(ulong sender, bool senderIsHost, CultivationMessage message)
     {
-        if (message.Protocol != "1") return;
+        if (message.Protocol != "2") return;
         if (message.Type == "plant" && IsHost())
         {
             ProcessHostPlantRequest(sender, message);
@@ -354,6 +412,11 @@ public sealed class ClonalCultivationMod : MelonMod
         if (message.Type == "clone-sync" && senderIsHost)
         {
             ApplyCloneIdentity(message);
+            return;
+        }
+        if (message.Type == "clone-prepare" && senderIsHost && !IsHost())
+        {
+            PrepareRemoteClone(message);
             return;
         }
         if (message.Type == "result" && senderIsHost &&
@@ -433,8 +496,11 @@ public sealed class ClonalCultivationMod : MelonMod
         }
 
         var requestedPosition = new Vector3(request.PotX, request.PotY, request.PotZ);
-        var pot = UnityEngine.Object.FindObjectsOfType<Pot>()
-            .Where(candidate => candidate is not null && candidate.CanAcceptSeed(out _))
+        var pots = UnityEngine.Object.FindObjectsOfType<Pot>();
+        var pot = request.PotObjectId >= 0
+            ? pots.FirstOrDefault(candidate => candidate?.NetworkObject?.ObjectId == request.PotObjectId)
+            : null;
+        pot ??= pots.Where(candidate => candidate is not null && candidate.CanAcceptSeed(out _))
             .OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - requestedPosition))
             .FirstOrDefault();
         if (pot is null || Vector3.SqrMagnitude(pot.transform.position - requestedPosition) > 2.25f)
@@ -515,6 +581,8 @@ public sealed class ClonalCultivationMod : MelonMod
         var remaining = item.GetTotalAmount() - 1;
         if (remaining <= 0)
         {
+            slot.ClearItemInstanceRequested();
+            if (slot.ItemInstance is null) return;
             slot.ClearStoredInstance(false);
             player.SetInventoryItem(index, null!);
             return;
@@ -570,6 +638,25 @@ public sealed class ClonalCultivationMod : MelonMod
     private sealed record PendingPlantResult(
         ulong Recipient, CultivationMessage Message, float NextRetry, int Attempts);
 
+    private void PrepareRemoteClone(CultivationMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.ProductId) || !Enum.IsDefined(typeof(EQuality), message.Quality)) return;
+        var product = ResolveOrImportRemoteProduct(message);
+        if (product is null)
+        {
+            LoggerInstance.Warning($"Could not prepare remote clone seed for {message.ProductId}/{message.Quality}.");
+            return;
+        }
+        EnsureCloneSeed(product, (EQuality)message.Quality);
+        LoggerInstance.Msg($"Prepared remote clone seed {SeedId(product.ID, message.Quality)} before planting.");
+    }
+
+    private static bool IsMultiplayerSession()
+    {
+        try { return Lobby.Instance is not null && Lobby.Instance.IsInLobby; }
+        catch { return false; }
+    }
+
     private void BroadcastCloneIdentities()
     {
         if (!IsHost() || Time.unscaledTime < _nextCloneIdentitySync) return;
@@ -588,6 +675,7 @@ public sealed class ClonalCultivationMod : MelonMod
             Type = "clone-sync",
             ProductId = product.ID,
             Quality = (int)template.Quality,
+            PotObjectId = pot.NetworkObject?.ObjectId ?? -1,
             PotX = pot.transform.position.x,
             PotY = pot.transform.position.y,
             PotZ = pot.transform.position.z
@@ -711,7 +799,7 @@ public sealed class ClonalCultivationMod : MelonMod
         _nextTraitUpdate = Time.unscaledTime + 0.5f;
         if (Time.unscaledTime >= _nextPotDiscovery)
         {
-            _nextPotDiscovery = Time.unscaledTime + 30f;
+            _nextPotDiscovery = Time.unscaledTime + 90f;
             foreach (var candidate in UnityEngine.Object.FindObjectsOfType<Pot>())
             {
                 if (candidate is null) continue;

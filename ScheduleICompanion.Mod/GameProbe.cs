@@ -94,6 +94,8 @@ public sealed class GameProbe
     private int _debugCatalogWarmupPasses;
     private float _nextNpcMarkerPublish;
     private float _nextMixRecommendationRefresh;
+    private float _nextProductionStatusRefresh;
+    private float _nextEmployeeStatusRefresh;
     private int _detailPhase;
     private ActiveOrderDetailPayload[] _operationOrders = Array.Empty<ActiveOrderDetailPayload>();
     private ProductStockPayload[] _operationStock = Array.Empty<ProductStockPayload>();
@@ -173,6 +175,8 @@ public sealed class GameProbe
         _debugCatalogWarmupPasses = 0;
         _nextNpcMarkerPublish = now;
         _nextMixRecommendationRefresh = now;
+        _nextProductionStatusRefresh = now + 7f;
+        _nextEmployeeStatusRefresh = now + 19f;
         _detailPhase = 0;
         _operationOrders = Array.Empty<ActiveOrderDetailPayload>();
         _operationStock = Array.Empty<ProductStockPayload>();
@@ -377,10 +381,24 @@ public sealed class GameProbe
                 PublishOperationsSnapshot();
                 break;
             case 5: RefreshMoneyAndRisk(now); PublishOperationsSnapshot(); break;
-            case 6: _operationProduction = BuildProductionStatus(); PublishOperationsSnapshot(); break;
+            case 6:
+                if (now >= _nextProductionStatusRefresh)
+                {
+                    _nextProductionStatusRefresh = now + 45f;
+                    _operationProduction = BuildProductionStatus();
+                    PublishOperationsSnapshot();
+                }
+                break;
             case 7: _operationDealers = BuildDealerStatus(); PublishOperationsSnapshot(); break;
             case 8: _operationDeliveries = BuildDeliveryStatus(); PublishOperationsSnapshot(); break;
-            case 9: _operationEmployees = BuildEmployeeStatus(); PublishOperationsSnapshot(); break;
+            case 9:
+                if (now >= _nextEmployeeStatusRefresh)
+                {
+                    _nextEmployeeStatusRefresh = now + 60f;
+                    _operationEmployees = BuildEmployeeStatus();
+                    PublishOperationsSnapshot();
+                }
+                break;
             case 10:
                 var laundering = BuildLaunderingStatus();
                 if (!_operationLaundering.SequenceEqual(laundering))
