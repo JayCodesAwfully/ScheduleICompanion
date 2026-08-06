@@ -23,7 +23,7 @@ namespace ScheduleICompanion.Backpack;
 public sealed class BackpackMod : MelonMod
 {
     private static BackpackMod? ActiveInstance;
-    private const string ProtocolVersion = "2";
+    private const string ProtocolVersion = "3";
     private BackpackStore? _store;
     private MelonPreferences_Entry<string>? _openKeyEntry;
     private KeyCode _openKey = KeyCode.B;
@@ -31,6 +31,7 @@ public sealed class BackpackMod : MelonMod
     private bool _menuOpen;
     private bool _waitingForHost;
     private float _nextHostSyncRetry;
+    private PendingTransfer? _pendingTransfer;
     private bool _sessionVerified;
     private string _status = "Ready";
     private Vector2 _inventoryScroll;
@@ -77,7 +78,10 @@ public sealed class BackpackMod : MelonMod
         if (_waitingForHost && IsMultiplayerClient() && Time.unscaledTime >= _nextHostSyncRetry)
         {
             _nextHostSyncRetry = Time.unscaledTime + 2f;
-            SendHello();
+            if (_pendingTransfer is not null)
+                BackpackProtocol.Send(_pendingTransfer.Message);
+            else
+                SendHello();
         }
 
         if (Input.GetKeyDown(_openKey))
@@ -771,6 +775,9 @@ public sealed class BackpackMod : MelonMod
             Fingerprint = item is null ? "" : Fingerprint(SerializeItem(item))
         };
 
+        _pendingTransfer = new PendingTransfer(message, item is null && _state is not null &&
+            backpackSlot >= 0 && backpackSlot < _state.Slots.Length ? _state.Slots[backpackSlot] : "");
+
         _waitingForHost = true;
         _nextHostSyncRetry = Time.unscaledTime + 2f;
         _status = "Waiting for host confirmation…";
@@ -797,6 +804,15 @@ public sealed class BackpackMod : MelonMod
 
         if (message.Type == "snapshot" && senderIsHost)
         {
+            var pending = _pendingTransfer;
+            var committed = pending is not null && message.State?.Journal.Any(entry =>
+                entry.TransactionId == pending.Message.RequestId && entry.Phase == "committed") == true;
+            if (pending is not null && (message.RequestId == pending.Message.RequestId || committed))
+            {
+                if (message.Success || committed)
+                    ApplyCommittedClientTransfer(pending, message.State!);
+                _pendingTransfer = null;
+            }
             _sessionVerified = message.SessionVerified && message.Protocol == ProtocolVersion;
             if (message.State is not null)
             {
@@ -873,7 +889,8 @@ public sealed class BackpackMod : MelonMod
         var journal = BeginJournal(state, request, "deposit", destination, json);
         journal.Phase = "remove-authorized";
         StageState(state);
-        source.ClearStoredInstance(true);
+        if (senderOwnsLocalPlayer(state.OwnerSteamId))
+            ClearInventorySlot(player, request.InventorySlot);
         state.Slots[destination] = json;
         state.Revision++;
         journal.Phase = "committed";
@@ -899,11 +916,13 @@ public sealed class BackpackMod : MelonMod
 
         var journal = BeginJournal(state, request, "withdraw", request.BackpackSlot, json);
         journal.InventorySlot = destination;
+        request.InventorySlot = destination;
         state.Slots[request.BackpackSlot] = "";
         state.Revision++;
         journal.Phase = "backpack-removed";
         StageState(state);
-        inventory[destination].SetStoredItem(item, true);
+        if (senderOwnsLocalPlayer(state.OwnerSteamId))
+            SetInventorySlot(player, destination, item);
         journal.Phase = "committed";
         TrimJournal(state);
         StageState(state);
@@ -995,6 +1014,49 @@ public sealed class BackpackMod : MelonMod
         _waitingForHost = false;
         _status = success ? status : "Not completed: " + status;
     }
+
+    private void ApplyCommittedClientTransfer(PendingTransfer pending, BackpackState state)
+    {
+        var player = Player.Local;
+        if (player is null) return;
+        var journal = state.Journal.LastOrDefault(entry => entry.TransactionId == pending.Message.RequestId);
+        if (journal is null || journal.Phase != "committed") return;
+
+        if (pending.Message.Type == "deposit")
+        {
+            var slots = GetPlayerInventorySlots(player);
+            var index = pending.Message.InventorySlot;
+            var item = slots is not null && index >= 0 && index < slots.Length ? slots[index].ItemInstance : null;
+            if (item is not null && Fingerprint(SerializeItem(item)).Equals(pending.Message.Fingerprint, StringComparison.OrdinalIgnoreCase))
+                ClearInventorySlot(player, index);
+        }
+        else if (pending.Message.Type == "withdraw" && !string.IsNullOrWhiteSpace(pending.ItemJson))
+        {
+            var item = ItemDeserializer.LoadItem(pending.ItemJson);
+            if (item is not null)
+                SetInventorySlot(player, journal.InventorySlot, item);
+        }
+    }
+
+    private static void ClearInventorySlot(Player player, int index)
+    {
+        var slots = GetPlayerInventorySlots(player);
+        if (slots is null || index < 0 || index >= slots.Length) return;
+        slots[index].ClearStoredInstance(false);
+        player.SetInventoryItem(index, null!);
+    }
+
+    private static void SetInventorySlot(Player player, int index, ItemInstance item)
+    {
+        var slots = GetPlayerInventorySlots(player);
+        if (slots is null || index < 0 || index >= slots.Length || slots[index].ItemInstance is not null) return;
+        slots[index].SetStoredItem(item, false);
+        player.SetInventoryItem(index, item);
+    }
+
+    private static bool senderOwnsLocalPlayer(ulong owner) => owner == LocalSteamId();
+
+    private sealed record PendingTransfer(BackpackMessage Message, string ItemJson);
 
     private void LoadLocalState()
     {
