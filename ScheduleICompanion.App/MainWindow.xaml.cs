@@ -366,6 +366,8 @@ public partial class MainWindow : Window
         OnlineBalanceText.Text = $"£{snapshot.OnlineBalance:N0}";
         NetWorthText.Text = $"£{snapshot.NetWorth:N0}";
         RiskText.Text = snapshot.Risk;
+        RankText.Text = string.IsNullOrWhiteSpace(snapshot.Rank) ? "Waiting for game" : snapshot.Rank;
+        RankXpText.Text = $"Total XP {snapshot.TotalXp:N0}";
         _mixRecommendations.Clear();
         foreach (var recommendation in snapshot.MixRecommendations ?? Array.Empty<MixRecommendationPayload>())
             _mixRecommendations.Add(recommendation);
@@ -664,6 +666,7 @@ public partial class MainWindow : Window
                 "Vehicle" => ("V", Color.FromRgb(20, 155, 205)),
                 "Dead drop" => ("↓", Color.FromRgb(194, 55, 143)),
                 "Dealer" => ("$", Color.FromRgb(137, 70, 205)),
+                "Sewer key" => ("K", Color.FromRgb(225, 174, 45)),
                 _ => ("•", Color.FromRgb(100, 110, 105))
             };
             var marker = CreateMapBadge(glyph, color, $"{poi.Kind}: {poi.Name}");
@@ -686,6 +689,7 @@ public partial class MainWindow : Window
         "Vehicle" => _settings.ShowOwnedVehiclePois,
         "Dead drop" => _settings.ShowDeadDropPois,
         "Dealer" => _settings.ShowDealerPois,
+        "Sewer key" => true,
         "Objective" => _settings.ShowObjectivePois,
         "Potential customer" => _settings.ShowPotentialCustomerPois,
         _ => false

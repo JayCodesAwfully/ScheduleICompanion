@@ -49,7 +49,7 @@ internal sealed record OperationsSnapshotPayload(
     IReadOnlyList<OperationItemPayload> Deliveries,
     IReadOnlyList<OperationItemPayload> Employees,
     IReadOnlyList<OperationItemPayload> Laundering,
-    string Risk,
+    string Risk, string Rank, int TotalXp,
     IReadOnlyList<MixRecommendationPayload> MixRecommendations);
 
 /// <summary>Targeted player, NPC, and native-map state probe.</summary>
@@ -107,6 +107,8 @@ public sealed class GameProbe
     private OperationItemPayload[] _operationLaundering = Array.Empty<OperationItemPayload>();
     private MixRecommendationPayload[] _operationMixRecommendations = Array.Empty<MixRecommendationPayload>();
     private string _operationRisk = "Waiting for local player";
+    private string _operationRank = "Waiting for game";
+    private int _operationTotalXp;
     private bool _freezeGameTime;
     private float _timeSpeedBeforeFreeze = 1f;
     private bool _autoClearTrash;
@@ -868,17 +870,34 @@ public sealed class GameProbe
                     if (property is null || propertyPoi is null) continue;
                     var p = propertyPoi.transform.position;
                     if (!TryGetNativeMapPosition(p, out var x, out var y, out var w, out var h)) continue;
-                    var isBusiness = businessIds.Contains(property.GetInstanceID()) ||
+                    var isBusiness = property is GameBusiness ||
+                                     businessIds.Contains(property.GetInstanceID()) ||
                                      (!string.IsNullOrWhiteSpace(property.PropertyCode) && businessCodes.Contains(property.PropertyCode)) ||
                                      (!string.IsNullOrWhiteSpace(property.PropertyName) && businessNames.Contains(property.PropertyName));
+                    // Only an acquired non-business property is a safehouse. Some world
+                    // properties report IsOwned for internal game purposes without being
+                    // present in the player's authoritative owned-property collection.
+                    if (!isBusiness && !IsPlayerOwnedProperty(property)) continue;
                     var kind = isBusiness
                         ? (property.IsOwned ? "Business owned" : "Business unowned")
-                        : (property.IsOwned ? "Property owned" : "Property unowned");
+                        : "Property owned";
                     pois.Add(new MapPoiPayload(
                         $"property-{property.GetInstanceID()}",
                         property.PropertyName ?? property.name ?? "Property",
                         kind,
                         x, y, w, h));
+                }
+            }
+
+            var sewerManager = SewerManager.Instance;
+            if (sewerManager is not null && !sewerManager.IsRandomWorldKeyCollected)
+            {
+                var pickup = sewerManager.RandomWorldSewerKeyPickup;
+                if (pickup is not null && pickup.gameObject.activeInHierarchy)
+                {
+                    var p = pickup.transform.position;
+                    if (TryGetNativeMapPosition(p, out var x, out var y, out var w, out var h))
+                        pois.Add(new MapPoiPayload("sewer-key", "Sewer key", "Sewer key", x, y, w, h));
                 }
             }
 
@@ -922,6 +941,17 @@ public sealed class GameProbe
             _server.Publish(new BridgeMessage { Type = "map_pois", Payload = new MapPoiSnapshotPayload(pois) });
         }
         catch (Exception ex) { Report("Map POIs", ex.Message); }
+    }
+
+    private static bool IsPlayerOwnedProperty(GameProperty property)
+    {
+        if (GameProperty.OwnedProperties is null) return false;
+        foreach (var owned in GameProperty.OwnedProperties)
+        {
+            if (owned is not null && owned.GetInstanceID() == property.GetInstanceID())
+                return true;
+        }
+        return false;
     }
 
     private static string? GetPoiKind(string name) =>
@@ -1191,6 +1221,12 @@ public sealed class GameProbe
             _operationRisk = local is null
                 ? "Waiting for local player"
                 : $"{local.CurrentRegion} · Police: {local.CrimeData?.CurrentPursuitLevel.ToString() ?? "None"}";
+            var level = UnityEngine.Object.FindObjectOfType<Il2CppScheduleOne.Levelling.LevelManager>();
+            if (level is not null)
+            {
+                _operationRank = level.GetFullRank().ToString();
+                _operationTotalXp = level.TotalXP;
+            }
         }
         catch (Exception ex)
         {
@@ -1214,6 +1250,7 @@ public sealed class GameProbe
                 _operationCash, _operationOnlineBalance, _operationNetWorth,
                 _operationProduction, _operationDealers, _operationDeliveries,
                 _operationEmployees, _operationLaundering, _operationRisk,
+                _operationRank, _operationTotalXp,
                 _operationMixRecommendations)
         });
     }

@@ -12,11 +12,17 @@ internal sealed class BackpackStore
         Directory.CreateDirectory(_root);
     }
 
-    public BackpackState Load(ulong owner, string career)
+    public BackpackState Load(ulong owner, string career, string? legacyCareer = null)
     {
         var path = GetPath(owner, career);
         if (!File.Exists(path))
         {
+            if (!string.IsNullOrWhiteSpace(legacyCareer) &&
+                !string.Equals(legacyCareer, career, StringComparison.OrdinalIgnoreCase))
+            {
+                var migrated = TryMigrateLegacyCareer(owner, career, legacyCareer);
+                if (migrated is not null) return migrated;
+            }
             var created = New(owner, career);
             return owner == 0 ? created : RecoverLegacyOwner(created);
         }
@@ -38,6 +44,45 @@ internal sealed class BackpackStore
             var corrupt = path + $".corrupt-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
             File.Copy(path, corrupt, true);
             return New(owner, career);
+        }
+    }
+
+    private BackpackState? TryMigrateLegacyCareer(ulong owner, string career, string legacyCareer)
+    {
+        var legacyPath = GetPath(owner, legacyCareer);
+        var claimPath = legacyPath + ".migration-claimed";
+        if (!File.Exists(legacyPath) || File.Exists(claimPath)) return null;
+        try
+        {
+            var state = JsonSerializer.Deserialize<BackpackState>(File.ReadAllText(legacyPath));
+            if (state?.Slots is null) return null;
+            if (state.Slots.Length != 12)
+            {
+                var slots = state.Slots;
+                Array.Resize(ref slots, 12);
+                state.Slots = slots;
+            }
+            state.OwnerSteamId = owner;
+            state.CareerId = career;
+            state.Revision++;
+            Save(state);
+            File.WriteAllText(claimPath, career);
+
+            try
+            {
+                var quarantine = legacyPath + $".migrated-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}";
+                File.Move(legacyPath, quarantine);
+            }
+            catch
+            {
+                // The new per-save copy is already durable. Leaving the legacy file in
+                // place is safer than discarding the successfully migrated state.
+            }
+            return state;
+        }
+        catch
+        {
+            return null;
         }
     }
 

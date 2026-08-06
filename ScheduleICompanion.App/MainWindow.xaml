@@ -565,11 +565,18 @@
                                                 CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                                 <StackPanel><TextBlock Text="CASH" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="CashBalanceText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
                                                 <StackPanel Grid.Column="1"><TextBlock Text="ONLINE" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="OnlineBalanceText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
                                                 <StackPanel Grid.Row="1" Margin="0,7,0,0"><TextBlock Text="NET WORTH" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="NetWorthText" Text="£0" Foreground="{StaticResource AccentBrush}" FontSize="18"/></StackPanel>
                                                 <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,7,0,0"><TextBlock Text="RISK / REGION" Foreground="{StaticResource MutedBrush}" FontSize="9"/><TextBlock x:Name="RiskText" Text="Waiting for game" FontSize="12" TextWrapping="Wrap"/></StackPanel>
+                                                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                                                    <TextBlock Text="LEVEL" Foreground="{StaticResource MutedBrush}" FontSize="9"/>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock x:Name="RankText" Text="Waiting for game" Foreground="{StaticResource AccentBrush}" FontSize="16" FontWeight="SemiBold"/>
+                                                        <TextBlock x:Name="RankXpText" Text="" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="10,4,0,0"/>
+                                                    </StackPanel>
+                                                </StackPanel>
                                             </Grid>
                                         </Border>
                                         <GroupBox Header="Order Readiness" Margin="0,0,0,8">

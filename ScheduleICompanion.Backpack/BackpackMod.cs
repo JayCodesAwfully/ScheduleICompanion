@@ -1050,7 +1050,9 @@ public sealed class BackpackMod : MelonMod
     private BackpackState LoadWorkingState(ulong owner, string career)
     {
         var key = StateKey(owner, career);
-        return _stagedStates.TryGetValue(key, out var staged) ? staged.Clone() : _store!.Load(owner, career);
+        return _stagedStates.TryGetValue(key, out var staged)
+            ? staged.Clone()
+            : _store!.Load(owner, career, IsMultiplayerClient() ? null : LegacyCareerId());
     }
 
     private void StageState(BackpackState state)
@@ -1118,9 +1120,41 @@ public sealed class BackpackMod : MelonMod
         try
         {
             var manager = UnityEngine.Object.FindObjectOfType<SaveManager>();
+            if (manager is null) return "unsaved";
+            var saveName = string.IsNullOrWhiteSpace(manager.SaveName) ? "unnamed" : manager.SaveName.Trim();
+            var savePath = !string.IsNullOrWhiteSpace(manager.PlayersSavePath)
+                ? manager.PlayersSavePath
+                : manager.IndividualSavesContainerPath;
+            if (string.IsNullOrWhiteSpace(savePath)) return $"{saveName}-unresolved";
+            var canonical = Path.GetFullPath(savePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+            var authority = CareerAuthoritySteamId();
+            var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{authority}|{canonical}")))[..20];
+            return $"{saveName}-{digest}";
+        }
+        catch { return "unsaved"; }
+    }
+
+    private static string LegacyCareerId()
+    {
+        try
+        {
+            var manager = UnityEngine.Object.FindObjectOfType<SaveManager>();
             return string.IsNullOrWhiteSpace(manager?.SaveName) ? "unsaved" : manager.SaveName;
         }
         catch { return "unsaved"; }
+    }
+
+    private static ulong CareerAuthoritySteamId()
+    {
+        try
+        {
+            var lobby = Lobby.Instance;
+            if (lobby is not null && lobby.IsInLobby && lobby.LobbyID != 0)
+                return SteamMatchmaking.GetLobbyOwner(new CSteamID(lobby.LobbyID)).m_SteamID;
+        }
+        catch { }
+        return LocalSteamId();
     }
 
     private static bool IsHost()

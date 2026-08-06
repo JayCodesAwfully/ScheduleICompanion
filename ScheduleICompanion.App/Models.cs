@@ -37,7 +37,7 @@ public sealed record OperationsSnapshotPayload(
     IReadOnlyList<OperationItemPayload> Deliveries,
     IReadOnlyList<OperationItemPayload> Employees,
     IReadOnlyList<OperationItemPayload> Laundering,
-    string Risk,
+    string Risk, string Rank, int TotalXp,
     IReadOnlyList<MixRecommendationPayload> MixRecommendations);
 public sealed record OperationItemRow(string Title, string Detail, string State);
 

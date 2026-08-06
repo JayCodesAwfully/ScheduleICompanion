@@ -329,7 +329,7 @@ public sealed class ClonalCultivationMod : MelonMod
         }
         var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         if (sender == LocalSteamId())
-            ConsumeOneFromSlot(player._inventory[hostSlotIndex]);
+            ConsumeOneFromNetworkedSlot(player, hostSlotIndex);
         var quantityAfter = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
         _status = $"Planted {definition.Name} ({weed.Quality}); bud stack {quantityBefore} -> {quantityAfter}";
         LoggerInstance.Msg(_status);
@@ -505,19 +505,6 @@ public sealed class ClonalCultivationMod : MelonMod
             return;
         }
         LoggerInstance.Warning("Host planted the clone, but the authorized bud was no longer in the local inventory.");
-    }
-
-    private static void ConsumeOneFromSlot(ItemSlot slot)
-    {
-        if (slot.ItemInstance is null) return;
-
-        // Match the game's inventory deletion path for the last object in a stack.
-        // ChangeQuantity can leave a zero-quantity ItemInstance behind on a client,
-        // while ClearStoredInstance removes and replicates the slot object itself.
-        if (slot.ItemInstance.GetTotalAmount() <= 1)
-            slot.ClearStoredInstance(true);
-        else
-            slot.ChangeQuantity(-1, true);
     }
 
     private static void ConsumeOneFromNetworkedSlot(Player player, int index)
