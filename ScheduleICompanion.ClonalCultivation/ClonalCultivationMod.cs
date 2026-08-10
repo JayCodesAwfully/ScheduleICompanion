@@ -8,6 +8,7 @@ using Il2CppScheduleOne.Growing;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Networking;
 using Il2CppScheduleOne.ObjectScripts;
+using Il2CppScheduleOne.Persistence;
 using Il2CppScheduleOne.Persistence.Datas;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Product;
@@ -35,6 +36,8 @@ public sealed class ClonalCultivationMod : MelonMod
     private readonly HashSet<Guid> _pendingPlantRequests = new();
     private readonly Dictionary<Guid, PendingPlantResult> _pendingPlantResults = new();
     private readonly List<PendingHostPlant> _pendingHostPlants = new();
+    private CloneRegistry? _persistentRegistry;
+    private string _loadedCareerId = "";
     private PendingHarvest? _pendingHarvest;
     private MelonPreferences_Entry<string>? _plantKeyEntry;
     private MelonPreferences_Entry<bool>? _instantGrowEntry;
@@ -46,6 +49,7 @@ public sealed class ClonalCultivationMod : MelonMod
     private float _nextRegistryRefresh;
     private float _nextTraitUpdate;
     private float _nextPotDiscovery;
+    private float _nextPersistentRestore;
     private float _nextCloneIdentitySync;
     private const float CloneGrowthTimeMultiplier = 1.3f;
     private string _status = "Hold a created weed bud, look at an empty pot, and press P";
@@ -67,6 +71,7 @@ public sealed class ClonalCultivationMod : MelonMod
         // Planting itself still performs an immediate targeted registration/lookup.
         _nextRegistryRefresh = Time.unscaledTime + 8f;
         _nextPotDiscovery = Time.unscaledTime + 23f;
+        _nextPersistentRestore = Time.unscaledTime + 10f;
         LoggerInstance.Msg($"Cultivation initialized. Hold a created weed bud, look at an empty pot, and press {_plantKey}.");
     }
 
@@ -78,6 +83,11 @@ public sealed class ClonalCultivationMod : MelonMod
         CompletePendingHostPlants();
         RetryPendingPlantResults();
         BroadcastCloneIdentities();
+        if (Time.unscaledTime >= _nextPersistentRestore)
+        {
+            _nextPersistentRestore = Time.unscaledTime + 30f;
+            RestorePersistentClones();
+        }
         if (_plantKeyEntry is not null && !_plantKeyEntry.Value.Equals(_plantKey.ToString(), StringComparison.OrdinalIgnoreCase))
             ParsePlantKey();
         if (Time.unscaledTime >= _nextRegistryRefresh)
@@ -382,6 +392,7 @@ public sealed class ClonalCultivationMod : MelonMod
             _cloneByPot[potKey] = (definition, plantedTemplate);
             _trackedPots[potKey] = pot;
             if (pot.Plant is not null) _clonePlantPointers[potKey] = pot.Plant.Pointer.ToInt64();
+            SavePersistentClone(pot, definition, plantedTemplate);
             SendCloneIdentity(pot, definition, plantedTemplate);
         }
         var quantityBefore = player._inventory[hostSlotIndex].ItemInstance?.GetTotalAmount() ?? 0;
@@ -865,6 +876,7 @@ public sealed class ClonalCultivationMod : MelonMod
         if (Time.unscaledTime >= _nextPotDiscovery)
         {
             _nextPotDiscovery = Time.unscaledTime + 90f;
+            RestorePersistentClones();
             foreach (var candidate in UnityEngine.Object.FindObjectsOfType<Pot>())
             {
                 if (candidate is null) continue;
@@ -928,11 +940,111 @@ public sealed class ClonalCultivationMod : MelonMod
 
     private void ForgetPot(long potKey)
     {
+        if (_trackedPots.TryGetValue(potKey, out var pot) && pot is not null)
+            RemovePersistentClone(pot);
         _trackedPots.Remove(potKey);
         _cloneByPot.Remove(potKey);
         _clonePlantPointers.Remove(potKey);
         _configuredClonePots.Remove(potKey);
     }
+
+    private void SavePersistentClone(Pot pot, WeedDefinition product, ProductItemInstance template)
+    {
+        if (!IsHost() || !EnsurePersistentRegistry()) return;
+        var position = pot.transform.position;
+        _persistentRegistry!.Plants[PotPositionKey(position)] = new SavedClonePlant
+        {
+            ProductId = product.ID,
+            Quality = (int)template.Quality,
+            PotX = position.x,
+            PotY = position.y,
+            PotZ = position.z
+        };
+        _persistentRegistry.Revision++;
+        _store?.Save(_persistentRegistry);
+    }
+
+    private void RemovePersistentClone(Pot pot)
+    {
+        if (!IsHost() || !EnsurePersistentRegistry()) return;
+        if (!_persistentRegistry!.Plants.Remove(PotPositionKey(pot.transform.position))) return;
+        _persistentRegistry.Revision++;
+        _store?.Save(_persistentRegistry);
+    }
+
+    private void RestorePersistentClones()
+    {
+        if (!IsHost() || !EnsurePersistentRegistry() || _persistentRegistry!.Plants.Count == 0) return;
+        var manager = UnityEngine.Object.FindObjectOfType<ProductManager>();
+        if (manager?.createdProducts is null) return;
+        var pots = UnityEngine.Object.FindObjectsOfType<Pot>();
+        foreach (var entry in _persistentRegistry.Plants.ToArray())
+        {
+            var saved = entry.Value;
+            var position = new Vector3(saved.PotX, saved.PotY, saved.PotZ);
+            var pot = pots.OrderBy(candidate => Vector3.SqrMagnitude(candidate.transform.position - position)).FirstOrDefault();
+            if (pot is null || Vector3.SqrMagnitude(pot.transform.position - position) > 0.25f) continue;
+            if (pot.Plant is null) continue;
+            var potKey = pot.Pointer.ToInt64();
+            if (_cloneByPot.ContainsKey(potKey)) continue;
+            WeedDefinition? product = null;
+            foreach (var candidate in manager.createdProducts)
+                if (candidate is WeedDefinition weed && weed.ID.Equals(saved.ProductId, StringComparison.OrdinalIgnoreCase))
+                {
+                    product = weed;
+                    break;
+                }
+            if (product is null || !Enum.IsDefined(typeof(EQuality), saved.Quality)) continue;
+            var quality = (EQuality)saved.Quality;
+            EnsureCloneSeed(product, quality);
+            var seedId = SeedId(product.ID, saved.Quality);
+            if (!_qualityBySeed.TryGetValue(seedId, out var template)) continue;
+            _cloneByPot[potKey] = (product, template);
+            _trackedPots[potKey] = pot;
+            _clonePlantPointers[potKey] = pot.Plant.Pointer.ToInt64();
+            SendCloneIdentity(pot, product, template);
+            LoggerInstance.Msg($"Restored saved clone {product.Name} ({quality}) at {entry.Key}.");
+        }
+    }
+
+    private bool EnsurePersistentRegistry()
+    {
+        var careerId = CareerId();
+        if (careerId is null) return false;
+        if (_persistentRegistry is not null && _loadedCareerId.Equals(careerId, StringComparison.Ordinal)) return true;
+        var careerChanged = _persistentRegistry is not null;
+        _loadedCareerId = careerId;
+        _persistentRegistry = _store?.Load(LocalSteamId(), careerId) ?? CloneRegistry.Create(LocalSteamId(), careerId);
+        if (careerChanged)
+        {
+            _cloneByPot.Clear();
+            _trackedPots.Clear();
+            _clonePlantPointers.Clear();
+            _configuredClonePots.Clear();
+        }
+        return true;
+    }
+
+    private static string? CareerId()
+    {
+        try
+        {
+            var manager = UnityEngine.Object.FindObjectOfType<SaveManager>();
+            if (manager is null || string.IsNullOrWhiteSpace(manager.SaveName)) return null;
+            var savePath = !string.IsNullOrWhiteSpace(manager.PlayersSavePath)
+                ? manager.PlayersSavePath
+                : manager.IndividualSavesContainerPath;
+            if (string.IsNullOrWhiteSpace(savePath)) return null;
+            var canonical = Path.GetFullPath(savePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+            var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))[..20];
+            return $"{manager.SaveName.Trim()}-{digest}";
+        }
+        catch { return null; }
+    }
+
+    private static string PotPositionKey(Vector3 position) =>
+        FormattableString.Invariant($"{position.x:F3}|{position.y:F3}|{position.z:F3}");
 
     private static string SeedId(string productId)
     {
@@ -972,6 +1084,7 @@ public sealed class ClonalCultivationMod : MelonMod
         var potKey = plant.Pot?.Pointer.ToInt64() ?? 0;
         if (potKey != 0 && _cloneByPot.TryGetValue(potKey, out var plantedClone))
         {
+            if (plant.Pot is not null) RemovePersistentClone(plant.Pot);
             var copiedHarvest = CreatePreservedHarvest(plantedClone.Product, plantedClone.Template, quantity);
             _pendingHarvest = new PendingHarvest(plantedClone.Product, plantedClone.Template, quantity,
                 Time.unscaledTime + 2f);
