@@ -602,7 +602,13 @@ public sealed class ClonalCultivationMod : MelonMod
         // ItemInstance, so planting appears to consume nothing until inventory is
         // rebuilt. The slot APIs update that instance and replicate the change.
         if (item.GetTotalAmount() <= 1)
-            slot.ClearStoredInstance(true);
+        {
+            // Clearing only through the slot RPC removes the quantity but can leave
+            // PlayerInventory (and the equipped-item UI) pointing at the old object.
+            // Clear the stored object locally, then publish the empty inventory slot.
+            slot.ClearStoredInstance(false);
+            player.SetInventoryItem(index, null!);
+        }
         else
             slot.ChangeQuantity(-1, true);
     }
