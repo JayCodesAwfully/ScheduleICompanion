@@ -23,6 +23,7 @@ internal sealed class CloneStore
             registry.OwnerSteamId = ownerSteamId;
             registry.CareerId = careerId;
             registry.Strains ??= new Dictionary<string, CloneStrain>(StringComparer.OrdinalIgnoreCase);
+            registry.Plants ??= new Dictionary<string, SavedClonePlant>(StringComparer.OrdinalIgnoreCase);
             return registry;
         }
         catch
