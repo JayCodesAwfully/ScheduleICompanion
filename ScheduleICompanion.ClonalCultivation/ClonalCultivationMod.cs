@@ -585,18 +585,15 @@ public sealed class ClonalCultivationMod : MelonMod
         var slot = player._inventory[index];
         var item = slot.ItemInstance;
         if (item is null) return;
-        var remaining = item.GetTotalAmount() - 1;
-        if (remaining <= 0)
-        {
-            slot.ClearItemInstanceRequested();
-            if (slot.ItemInstance is null) return;
-            slot.ClearStoredInstance(false);
-            player.SetInventoryItem(index, null!);
-            return;
-        }
-        var replacement = item.GetCopy(remaining);
-        slot.SetStoredItem(replacement, false);
-        player.SetInventoryItem(index, replacement);
+
+        // Mutate the slot through its native quantity RPC. Replacing the stack with
+        // SetInventoryItem leaves the equipped/networked slot holding its original
+        // ItemInstance, so planting appears to consume nothing until inventory is
+        // rebuilt. The slot APIs update that instance and replicate the change.
+        if (item.GetTotalAmount() <= 1)
+            slot.ClearStoredInstance(true);
+        else
+            slot.ChangeQuantity(-1, true);
     }
 
     private void SendPlantResult(ulong recipient, Guid requestId, bool success, string detail,

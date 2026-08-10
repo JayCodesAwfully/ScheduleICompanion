@@ -1,25 +1,33 @@
-# Schedule I Companion v1.6.0 — Dashboard Intelligence and Managed Mods
+# Schedule I Companion
 
-The dashboard now brings live game information together beside the map: game time, quests,
-messages, orders, notifications, and configurable map POIs. Each section and POI category can be
-shown or hidden in Settings. The dark Schedule I-inspired interface and live runtime refresh remain.
+Schedule I Companion is a desktop app that runs alongside Schedule I. It brings useful information from your current game into one place, including a live map, active jobs and messages, and product-mixing suggestions.
 
-## Dashboard additions
+It also manages the custom mods included with the project. Most of the Companion is designed for normal play, while optional developer tools are available for testing and troubleshooting.
 
-- In-game clock with 12-hour and 24-hour display modes
-- Property, laundering-business, contract, owned-vehicle, dead-drop, recruited-dealer, and tracked-objective POIs
-- Current quest objectives and recent text-message previews
-- Orders moved onto the Dashboard as an optional panel
-- Opt-in debugging tools for freezing time, teleporting, opening interfaces, toggle for instant plant growth, clearing trash manually or every 5–60 seconds, showing FPS, and setting the weather
+## What the Companion can do
 
-DevTools are disabled by default and must be enabled in Settings. Their actions use Schedule I's
-built-in console command system.
+- Show the in-game time, active quests, messages and orders
+- Display useful locations and objectives on a live map
+- Track properties, businesses, vehicles, dealers and dead drops
+- Recommend the most valuable mixes available from your unlocked products and ingredients
+- Install, enable and disable the included custom mods
+- Provide optional developer tools for testing plants, inventory, weather, time, movement and other game systems
+- Customise which dashboard panels and map markers are shown
+
+Developer tools are disabled by default and can be turned on from the **Settings** tab.
 
 ## Custom mods
 
--   Backpack
-    The backpack should work in Co-op / Solo, between different save games.
+### Backpack
 
--   Custom Cultivation
-    Plant bud-leaves that you have created, it will remember the name, quality and perks and create this in a new plant ready to harvest.
-    Look at the pot with the bud in your hand and press 'P'.
+Adds a personal 12-slot backpack that works across save games and supports solo and co-op play. Press **B** in game to open or close it.
+
+### Cultivation
+
+Allows a created weed bud to be planted as a clone. The resulting plant keeps the strain, quality and properties of the planted bud. Equip the bud, aim at an empty prepared pot and press **P**. Planting consumes one bud.
+
+## Activating a mod
+
+Close Schedule I before changing any mods. Open the Companion, select the **Mods** tab and switch on the mod you want to use. The Companion will install it into the game automatically.
+
+For co-op, the host and the player using the feature should both have the same mod version enabled. Disabling a mod does not delete its saved player data.
